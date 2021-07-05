@@ -138,6 +138,12 @@
     This library is coded in the spirit of the stb libraries and follows the stb
     guidelines.
 
+    ----------------------------------------------------------------------------
+    LICENSE
+    ----------------------------------------------------------------------------
+    This software is in the public domain. Where that dedication is not
+    recognized, you are granted a perpetual, irrevocable license to copy,
+    distribute, and modify this file as you see fit.
 */
 
 // TODO: Null checks and warnings for EasyTab
@@ -152,7 +158,6 @@
 #ifndef EASYTAB_H
 #define EASYTAB_H
 
-#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -165,9 +170,13 @@
 #include <windows.h>
 #endif // _WIN32
 
+#define MILTON_EASYTAB
+
 typedef enum
 {
     EASYTAB_OK = 0,
+
+    EASYTAB_NEEDS_REINIT = 1,
 
     // Errors
     EASYTAB_MEMORY_ERROR           = -1,
@@ -175,10 +184,21 @@ typedef enum
     EASYTAB_DLL_LOAD_ERROR         = -3,
     EASYTAB_WACOM_WIN32_ERROR      = -4,
     EASYTAB_INVALID_FUNCTION_ERROR = -5,
-    EASYTAB_NO_TABLETS_FOUND       = -6,
+    #if defined MILTON_EASYTAB
+    EASYTAB_QUEUE_SIZE_ERROR       = -6,
+    #endif
 
     EASYTAB_EVENT_NOT_HANDLED = -16,
 } EasyTabResult;
+
+#ifdef MILTON_EASYTAB
+#define EASYTAB_PACKETQUEUE_SIZE    128
+#define EASYTAB_TRUE                1
+#define EASYTAB_FALSE               0
+#define EASYTAB_BOOL                int
+#define EASYTAB_ABS(val)  ( ((val) >= 0) ? val : -val )
+#endif
+
 
 typedef enum
 {
@@ -275,6 +295,11 @@ typedef enum
         #define CXO_MGNINSIDE   0x4000
         #define CXO_CSRMESSAGES 0x0008 /* 1.1 */
 
+        // Context status values
+        #define CXS_DISABLED  0x0001
+        #define CXS_OBSCURED  0x0002
+        #define CXS_ONTOP     0x0004
+
         #define DVC_NAME        1
         #define DVC_HARDWARE    2
         #define DVC_NCSRTYPES   3
@@ -330,6 +355,13 @@ typedef enum
         FIX32   axResolution;
     } AXIS, *PAXIS, NEAR *NPAXIS, FAR *LPAXIS;
 
+    typedef struct tagORIENTATION {
+        int   orAzimuth;
+        int   orAltitude;
+        int   orTwist;
+
+    } ORIENTATION;
+
     #define LCNAMELEN 40
     typedef struct tagLOGCONTEXTA {
         char    lcName[LCNAMELEN];
@@ -378,7 +410,7 @@ typedef enum
 #endif // wintab.h
 // -----------------------------------------------------------------------------
 
-#define PACKETDATA PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE
+#define PACKETDATA PK_X | PK_Y | PK_BUTTONS | PK_NORMAL_PRESSURE | PK_ORIENTATION
 #define PACKETMODE 0
 
 // -----------------------------------------------------------------------------
@@ -543,6 +575,9 @@ typedef HMGR (WINAPI * WTMGROPEN) (HWND, UINT);
 typedef BOOL (WINAPI * WTMGRCLOSE) (HMGR);
 typedef HCTX (WINAPI * WTMGRDEFCONTEXT) (HMGR, BOOL);
 typedef HCTX (WINAPI * WTMGRDEFCONTEXTEX) (HMGR, UINT, BOOL);
+#ifdef MILTON_EASYTAB
+typedef int  (WINAPI * WTQUEUESIZEGET) (HCTX);
+#endif
 
 #endif // WIN32
 
@@ -567,21 +602,44 @@ enum EasyTab_Buttons_
     EasyTab_Buttons_Pen_Upper = 1 << 2, // Upper pen button is pressed
 };
 
+
+// Spherical coordinate system used by Wintab to store the orientation of the pen.
+typedef struct
+{
+    int32_t Azimuth;
+    int32_t Altitude;
+    int32_t Twist;
+} EasyTab_Orientation;
+
 // -----------------------------------------------------------------------------
 // Structs
 // -----------------------------------------------------------------------------
-typedef struct
+typedef struct EasyTab_s
 {
+#ifdef MILTON_EASYTAB
+    int32_t PosX[EASYTAB_PACKETQUEUE_SIZE];
+    int32_t PosY[EASYTAB_PACKETQUEUE_SIZE];
+    float   Pressure[EASYTAB_PACKETQUEUE_SIZE]; // Range: 0.0f to 1.0f
+    int32_t NumPackets;  // Number of PosX, PosY, Pressure elements available in arrays.
+    EASYTAB_BOOL PenInProximity;  // EASYTAB_TRUE if pen is in proximity to table. EASYTAB_FALSE otherwise.
+#else
     int32_t PosX, PosY;
     float   Pressure; // Range: 0.0f to 1.0f
+#endif
     int32_t Buttons; // Bit field. Use with the EasyTab_Buttons_ enum.
 
     int32_t RangeX, RangeY;
     int32_t MaxPressure;
 
+    EasyTab_Orientation Orientation;
+
 #ifdef __linux__
     XDevice* Device;
     uint32_t MotionType;
+    uint32_t ProximityTypeIn;
+    uint32_t ProximityTypeOut;
+    uint32_t ButtonTypePress;
+    uint32_t ButtonTypeRelease;
     XEventClass EventClasses[1024];
     uint32_t NumEventClasses;
 #endif // __linux__
@@ -604,12 +662,30 @@ typedef struct
     WTEXTSET          WTExtSet;
     WTEXTGET          WTExtGet;
     WTQUEUESIZESET    WTQueueSizeSet;
+#ifdef MILTON_EASYTAB
+    WTQUEUESIZEGET    WTQueueSizeGet;
+#endif
     WTDATAPEEK        WTDataPeek;
     WTPACKETSGET      WTPacketsGet;
     WTMGROPEN         WTMgrOpen;
     WTMGRCLOSE        WTMgrClose;
     WTMGRDEFCONTEXT   WTMgrDefContext;
     WTMGRDEFCONTEXTEX WTMgrDefContextEx;
+
+
+    LONG InputOriginX;
+    LONG InputOriginY;
+
+    LONG InputExtentX;
+    LONG InputExtentY;
+
+    LONG OutputOriginX;
+    LONG OutputOriginY;
+
+    LONG OutputExtentX;
+    LONG OutputExtentY;
+
+
 #endif // WIN32
 } EasyTabInfo;
 
@@ -640,7 +716,9 @@ extern EasyTabInfo* EasyTab;
 #else
 
     // Save some trouble when porting.
+    #ifndef MILTON_EASYTAB
     #error "Unsupported platform."
+    #endif
 
 #endif // __linux__ _WIN32
 // -----------------------------------------------------------------------------
@@ -676,7 +754,7 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
     {
         fprintf(stderr, "easytab: #device[%d] = %s\n", i, Devices[i].name);
         if (!strstr(Devices[i].name, "stylus") &&
-            !strstr(Devices[i].name, "Pen") && 
+            !strstr(Devices[i].name, "Wacom") && 
             !strstr(Devices[i].name, "eraser")) { continue; }
 
         EasyTab->Device = XOpenDevice(Disp, Devices[i].id);
@@ -717,13 +795,29 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
                         //printf("Max/min pressure values: %d, %d\n", min, EasyTab->MaxPressure);
                     }
 
-                    XEventClass EventClass;
-                    DeviceMotionNotify(EasyTab->Device, EasyTab->MotionType, EventClass);
-                    if (EventClass)
-                    {
-                        EasyTab->EventClasses[EasyTab->NumEventClasses] = EventClass;
-                        EasyTab->NumEventClasses++;
-                    }
+                    XEventClass EventClassMotion;
+                    XEventClass EventClassProximityIn;
+                    XEventClass EventClassProximityOut;
+                    XEventClass EventClassButtonPress;
+                    XEventClass EventClassButtonRelease;
+                    DeviceMotionNotify(EasyTab->Device, EasyTab->MotionType, EventClassMotion);
+                    ProximityIn(EasyTab->Device, EasyTab->ProximityTypeIn, EventClassProximityIn);
+                    ProximityOut(EasyTab->Device, EasyTab->ProximityTypeOut,EventClassProximityOut );
+                    DeviceButtonPress(EasyTab->Device, EasyTab->ButtonTypePress, EventClassButtonPress);
+                    DeviceButtonPress(EasyTab->Device, EasyTab->ButtonTypeRelease, EventClassButtonRelease);
+
+                    #define APPEND_EVENT_CLASS(EventClass) \
+                        if (EventClass)                                                     \
+                        {                                                                   \
+                            EasyTab->EventClasses[EasyTab->NumEventClasses] = EventClass;   \
+                            EasyTab->NumEventClasses++;                                     \
+                        }
+
+                    APPEND_EVENT_CLASS(EventClassMotion);
+                    APPEND_EVENT_CLASS(EventClassProximityIn);
+                    APPEND_EVENT_CLASS(EventClassProximityOut);
+
+                    #undef APPEND_EVENT_CLASS
                 } break;
             }
 
@@ -736,9 +830,57 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
     XFreeDeviceList(Devices);
 
     if (EasyTab->Device != 0) { return EASYTAB_OK; }
-    else                      { return EASYTAB_NO_TABLETS_FOUND; }
+    else                      { return EASYTAB_X11_ERROR; }
 }
 
+
+#ifdef MILTON_EASYTAB
+EasyTabResult EasyTab_HandleEvent(XEvent* Event)
+{
+    EasyTab->NumPackets = 0;
+
+    if (Event->type == EasyTab->MotionType)
+    {
+        XDeviceMotionEvent* MotionEvent = (XDeviceMotionEvent*)(Event);
+        EasyTab->PosX[0]     = MotionEvent->x;
+        EasyTab->PosY[0]     = MotionEvent->y;
+        EasyTab->Pressure[0] = (float)MotionEvent->axis_data[2] / (float)EasyTab->MaxPressure;
+
+        if (EasyTab->Pressure[0] > 0.0f)
+        {
+            EasyTab->Buttons |= EasyTab_Buttons_Pen_Touch;
+        }
+        else
+        {
+            EasyTab->Buttons &= ~EasyTab_Buttons_Pen_Touch;
+        }
+
+        EasyTab->NumPackets = 1;
+    }
+    else if (Event->type == EasyTab->ProximityTypeIn)
+    {
+        EasyTab->PenInProximity = EASYTAB_TRUE;
+    }
+    else if (Event->type == EasyTab->ProximityTypeOut)
+    {
+        EasyTab->PenInProximity = EASYTAB_FALSE;
+    }
+    else if (Event->type == EasyTab->ButtonTypePress)
+    {
+        // TODO: Buttons
+    }
+    else if (Event->type == EasyTab->ButtonTypeRelease)
+    {
+
+    }
+    else
+    {
+        return EASYTAB_EVENT_NOT_HANDLED;
+    }
+
+    return EASYTAB_OK;
+}
+#else
 EasyTabResult EasyTab_HandleEvent(XEvent* Event)
 {
     if (Event->type != EasyTab->MotionType) { return EASYTAB_EVENT_NOT_HANDLED; }
@@ -749,6 +891,7 @@ EasyTabResult EasyTab_HandleEvent(XEvent* Event)
     EasyTab->Pressure = (float)MotionEvent->axis_data[2] / (float)EasyTab->MaxPressure;
     return EASYTAB_OK;
 }
+#endif
 
 void EasyTab_Unload(Display* Disp)
 {
@@ -787,12 +930,15 @@ EasyTabResult EasyTab_Load_Ex(HWND Window,
     EasyTab = (EasyTabInfo*)calloc(1, sizeof(EasyTabInfo)); // We want init to zero, hence calloc.
     if (!EasyTab) { return EASYTAB_MEMORY_ERROR; }
 
+
     // Load Wintab DLL and get function addresses
     {
         EasyTab->Dll = LoadLibraryA("Wintab32.dll");
         if (!EasyTab->Dll)
         {
             OutputDebugStringA("Wintab32.dll not found.\n");
+            free(EasyTab);
+            EasyTab = NULL;
             return EASYTAB_DLL_LOAD_ERROR;
         }
 
@@ -816,6 +962,9 @@ EasyTabResult EasyTab_Load_Ex(HWND Window,
         GETPROCADDRESS(WTMGRCLOSE        , WTMgrClose);
         GETPROCADDRESS(WTMGRDEFCONTEXT   , WTMgrDefContext);
         GETPROCADDRESS(WTMGRDEFCONTEXTEX , WTMgrDefContextEx);
+        #ifdef MILTON_EASYTAB
+            GETPROCADDRESS(WTQUEUESIZEGET    , WTQueueSizeGet);  // Note: In wintab samples this is done via #defines
+        #endif
     }
 
     if (!EasyTab->WTInfoA(0, 0, NULL))
@@ -824,6 +973,20 @@ EasyTabResult EasyTab_Load_Ex(HWND Window,
         return EASYTAB_WACOM_WIN32_ERROR;
     }
 
+#ifdef MILTON_EASYTAB
+    // Note(Sergio): I want about 3 packets per frame. This could be a parameter for Load_Ex
+    UINT DesiredPktRate = 200;
+    {
+        UINT MaxPktRate = 0;
+        // Get maxiumum rate (DVX_PKTRATE)
+        if (EasyTab->WTInfoA(WTI_DEVICES, DVC_PKTRATE, &MaxPktRate))
+        {
+            DesiredPktRate = min(DesiredPktRate, MaxPktRate);
+        }
+    }
+#endif
+
+
     // Open context
     {
         LOGCONTEXTA LogContext = {0};
@@ -831,27 +994,46 @@ EasyTabResult EasyTab_Load_Ex(HWND Window,
         AXIS        RangeY     = {0};
         AXIS        Pressure   = {0};
 
-        EasyTab->WTInfoA(WTI_DDCTXS, 0, &LogContext);
+        EasyTab->WTInfoA(WTI_DEFSYSCTX, 0, &LogContext);
         EasyTab->WTInfoA(WTI_DEVICES, DVC_X, &RangeX);
         EasyTab->WTInfoA(WTI_DEVICES, DVC_Y, &RangeY);
         EasyTab->WTInfoA(WTI_DEVICES, DVC_NPRESSURE, &Pressure);
 
-        LogContext.lcPktData = PACKETDATA; // ??
+        LogContext.lcPktData = PACKETDATA;  // Specify the data we want in each packet.
         LogContext.lcOptions |= CXO_MESSAGES;
         if (MoveCursor) { LogContext.lcOptions |= CXO_SYSTEM; }
         LogContext.lcPktMode = PACKETMODE;
         LogContext.lcMoveMask = PACKETDATA;
         LogContext.lcBtnUpMask = LogContext.lcBtnDnMask;
 
-        LogContext.lcOutOrgX = 0;
-        LogContext.lcOutOrgY = 0;
-        LogContext.lcOutExtX = GetSystemMetrics(SM_CXSCREEN);
-        LogContext.lcOutExtY = -GetSystemMetrics(SM_CYSCREEN);
+        #ifdef MILTON_EASYTAB
+        LogContext.lcPktRate = DesiredPktRate;
+        #endif
 
-        LogContext.lcSysOrgX = 0;
-        LogContext.lcSysOrgY = 0;
-        LogContext.lcSysExtX = GetSystemMetrics(SM_CXSCREEN);
-        LogContext.lcSysExtY = GetSystemMetrics(SM_CYSCREEN);
+        EasyTab->InputOriginX = LogContext.lcInOrgX;
+        EasyTab->InputOriginY = LogContext.lcInOrgY;
+        EasyTab->InputExtentX = LogContext.lcInExtX;
+        EasyTab->InputExtentY = LogContext.lcInExtY;
+
+        LogContext.lcOutOrgX = 0;
+        LogContext.lcOutExtX = LogContext.lcInExtX;
+
+        LogContext.lcOutOrgY = 0;
+        LogContext.lcOutExtY = -LogContext.lcInExtY;
+
+
+
+        LogContext.lcOutOrgX = 0;
+        LogContext.lcOutExtX = LogContext.lcInExtX;
+
+        LogContext.lcOutOrgY = 0;
+        LogContext.lcOutExtY = -LogContext.lcInExtY;
+
+
+        EasyTab->OutputOriginX = GetSystemMetrics(SM_XVIRTUALSCREEN); // LogContext.lcOutOrgX;
+        EasyTab->OutputOriginY = GetSystemMetrics(SM_YVIRTUALSCREEN); // LogContext.lcOutOrgY;
+        EasyTab->OutputExtentX = GetSystemMetrics( SM_CXVIRTUALSCREEN );
+        EasyTab->OutputExtentY = GetSystemMetrics( SM_CYVIRTUALSCREEN );
 
         if (TrackingMode == EASYTAB_TRACKING_MODE_RELATIVE)
         {
@@ -872,7 +1054,7 @@ EasyTabResult EasyTab_Load_Ex(HWND Window,
             // with the radix point between the two words. Thus, the type
             // contains 16 bits to the left of the radix point and 16 bits to
             // the right of it.
-            // 
+            //
             // 0x10000 Hex
             // = 65,536 Decimal
             // = 0000 0000 0000 0001 . 0000 0000 0000 0000 Binary
@@ -903,6 +1085,15 @@ EasyTabResult EasyTab_Load_Ex(HWND Window,
             EasyTab->RangeX      = RangeX.axMax;
             EasyTab->RangeY      = RangeY.axMax;
         }
+
+#ifdef MILTON_EASYTAB
+        // Try and set the queue size
+        int QueueSize = EasyTab->WTQueueSizeGet(EasyTab->Context);
+        if (!EasyTab->WTQueueSizeSet(EasyTab->Context, EASYTAB_PACKETQUEUE_SIZE))
+        {
+            return EASYTAB_QUEUE_SIZE_ERROR;
+        }
+#endif
     }
 
     return EASYTAB_OK;
@@ -910,6 +1101,135 @@ EasyTabResult EasyTab_Load_Ex(HWND Window,
 
 #undef GETPROCADDRESS
 
+#ifdef MILTON_EASYTAB
+EasyTabResult EasyTab_HandleEvent(HWND Window, UINT Message, LPARAM LParam, WPARAM WParam)
+{
+    EasyTabResult result = EASYTAB_EVENT_NOT_HANDLED;
+
+    PACKET PacketBuffer[EASYTAB_PACKETQUEUE_SIZE] = {0};
+
+    EasyTab->NumPackets = 0;
+    if (Message == WT_PACKET)
+    {
+        #define EASYTAB_SIGN(val) ( ((val) >= 0) ? 1 : -1 )
+
+        int NumPackets = EasyTab->WTPacketsGet(EasyTab->Context, EASYTAB_PACKETQUEUE_SIZE, PacketBuffer);
+
+        if ( NumPackets ) { EasyTab->Buttons = 0; }
+        for (int i = 0; i < NumPackets; ++i)
+        {
+            float x;
+            float y;
+            if (EASYTAB_SIGN(EasyTab->OutputExtentX) == EASYTAB_SIGN(EasyTab->InputExtentX))
+            {
+                x = ((PacketBuffer[i].pkX - EasyTab->InputOriginX) * EASYTAB_ABS(EasyTab->OutputExtentX) / (float)EASYTAB_ABS(EasyTab->InputExtentX)) + EasyTab->OutputOriginX;
+            }
+            else
+            {
+                x = EASYTAB_ABS(EasyTab->OutputExtentX) * (EASYTAB_ABS(EasyTab->InputExtentX) - (PacketBuffer[i].pkX - EasyTab->InputOriginX)) / (float)EASYTAB_ABS(EasyTab->InputExtentX) +  EasyTab->OutputOriginX;
+            }
+
+            if (EASYTAB_SIGN(EasyTab->OutputExtentX) == EASYTAB_SIGN(EasyTab->InputExtentX))
+            {
+                y = ((PacketBuffer[i].pkY - EasyTab->InputOriginY) * EASYTAB_ABS(EasyTab->OutputExtentY) / (float)EASYTAB_ABS(EasyTab->InputExtentY)) + EasyTab->OutputOriginY;
+            }
+            else
+            {
+                y = EASYTAB_ABS(EasyTab->OutputExtentY) * (EASYTAB_ABS(EasyTab->InputExtentY) - (PacketBuffer[i].pkY - EasyTab->InputOriginY)) / (float)EASYTAB_ABS(EasyTab->InputExtentY) +  EasyTab->OutputOriginY;
+            }
+
+
+            POINT point = { (long)x, (long)y };
+
+            ScreenToClient(Window, &point);
+
+            EasyTab->PosX[i] = point.x;
+            EasyTab->PosY[i] = point.y;
+
+            EasyTab->Pressure[i] = (float)PacketBuffer[i].pkNormalPressure / (float)EasyTab->MaxPressure;
+
+            // Setting the Buttons variable if any of the packets had a button pushed
+            EasyTab->Buttons |= PacketBuffer[i].pkButtons;
+        }
+
+        // Fill the ergtation of the last packet in the buffer.
+        if (NumPackets)
+        {
+            EasyTab->Orientation.Azimuth = PacketBuffer[NumPackets - 1].pkOrientation.orAzimuth;
+            EasyTab->Orientation.Altitude = PacketBuffer[NumPackets - 1].pkOrientation.orAltitude;
+            EasyTab->Orientation.Twist = PacketBuffer[NumPackets - 1].pkOrientation.orTwist;
+        }
+
+        EasyTab->NumPackets = NumPackets;
+
+        result = EASYTAB_OK;
+
+        #undef EASYTAB_SIGN
+    }
+    else if (Message == WT_PROXIMITY &&
+             (HCTX)WParam == EasyTab->Context)
+    {
+        if (LOWORD(LParam) != 0)
+        {
+            // Entering context
+            EasyTab->PenInProximity = EASYTAB_TRUE;
+        }
+        else
+        {
+            EasyTab->PenInProximity = EASYTAB_FALSE;
+
+        }
+        result = EASYTAB_OK;
+        // Alway clear the queue.
+        EasyTab->WTPacketsGet(EasyTab->Context, EASYTAB_PACKETQUEUE_SIZE+1, NULL);
+    }
+    else if (Message == WM_ACTIVATE && EasyTab->Context)
+    {
+        // Extract the low word of WParam, which specifies whether the window became active or not
+        // see https://msdn.microsoft.com/en-us/library/windows/desktop/ms646274.aspx
+        BOOL Active = (WParam & 0xFFFF) != 0;
+
+        // see http://www.wacomeng.com/windows/docs/NotesForTabletAwarePCDevelopers.html#_Toc274818945
+        EasyTab->WTEnable(EasyTab->Context, Active);
+        result = EASYTAB_OK;
+    }
+    else if (Message == WT_CTXOVERLAP && EasyTab->Context)
+    {
+        if (LParam & CXS_OBSCURED)
+        {
+            // We want to be on top even when obscured, because of overlayed
+            // windows that don't steal focus.
+            EasyTab->WTOverlap(EasyTab->Context, true);
+        }
+        result = EASYTAB_OK;
+    }
+    else if (Message == WT_CTXUPDATE)
+    {
+        HCTX UpdatedContext = (HCTX)WParam;
+        result = EASYTAB_OK;
+    }
+    else if (Message == WT_CTXOPEN)
+    {
+        HCTX NewContext = (HCTX)WParam;
+        EasyTab->Context = NewContext;
+        result = EASYTAB_OK;
+    }
+    else if (Message == WT_CTXCLOSE)
+    {
+        if ((HCTX)WParam == EasyTab->Context)
+        {
+            EasyTab->Context = 0;
+        }
+        result = EASYTAB_OK;
+    }
+    else if (Message == WT_INFOCHANGE)
+    {
+        result = EASYTAB_NEEDS_REINIT;
+    }
+
+    return result;
+}
+#else
 EasyTabResult EasyTab_HandleEvent(HWND Window, UINT Message, LPARAM LParam, WPARAM WParam)
 {
     PACKET Packet = { 0 };
@@ -932,13 +1252,21 @@ EasyTabResult EasyTab_HandleEvent(HWND Window, UINT Message, LPARAM LParam, WPAR
 
     return EASYTAB_EVENT_NOT_HANDLED;
 }
+#endif
 
 void EasyTab_Unload()
 {
-    if (EasyTab->Context) { EasyTab->WTClose(EasyTab->Context); }
-    if (EasyTab->Dll)     { FreeLibrary(EasyTab->Dll); }
-    free(EasyTab);
-    EasyTab = NULL;
+    if (EasyTab)
+    {
+        if (EasyTab->Context && EasyTab->WTClose) { EasyTab->WTClose(EasyTab->Context); }
+        #ifndef MILTON_EASYTAB
+        // NOTE(Sergio): Wacom DLL has a memory leak, AppVerifier nags about it
+        #else
+        if (EasyTab->Dll)     { FreeLibrary(EasyTab->Dll); }
+        #endif
+        free(EasyTab);
+        EasyTab = NULL;
+    }
 }
 
 #endif // WIN32

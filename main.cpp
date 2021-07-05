@@ -20,6 +20,8 @@ using namespace std;
 // pen lower: pan
 // ctrl+pen lower: zoom
 // pen upper: erase
+// pen lower button: middle
+// pen upper button: right
 int main() {
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -75,16 +77,35 @@ int main() {
                 EasyTabResult res = EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
 
                 if (res == EASYTAB_OK) {
-                    std::cout << "posX: " << EasyTab->PosX 
-                        << " | posY: " << EasyTab->PosY 
-                        << " | pressure: " << EasyTab->Pressure
+                    std::cout 
+                        << "npackets: " << EasyTab->NumPackets
+                        << " | posX: " << EasyTab->PosX[0]
+                        << " | posY: " << EasyTab->PosY[0]
+                        << " | pressure: " << EasyTab->Pressure[0]
                         << " | touch " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) 
                         << " | presslo " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Lower) 
                         << " | presshi " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper)
-                        // << " | altitide: " << EasyTab->Orientation.Altitude
+                        << " | altitide: " << EasyTab->Orientation.Altitude
                         << "\n";
-                    assert(! (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch));
                 }
+            }
+            else if (event.type == SDL_KEYDOWN) {
+                cout << "keydown: " << SDL_GetKeyName( event.key.keysym.sym)  << "\n";
+            }
+            else if (event.type == SDL_MOUSEBUTTONDOWN){
+                string button_name = "unk";
+                switch (event.button.button) {
+                    case SDL_BUTTON_LEFT:
+                        button_name = "left"; break;
+                    case SDL_BUTTON_RIGHT:
+                        button_name = "right"; break;
+                    case SDL_BUTTON_MIDDLE:
+                        button_name = "middle"; break;
+                    default:
+                        button_name = "unk"; break;
+
+                }
+                cout << "mousedown: |" << button_name << "\n";
             }
         }
 
