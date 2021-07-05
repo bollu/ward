@@ -14,7 +14,12 @@ using namespace std;
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 
+//  https://github.com/serge-rgb/milton --- has great reference code for stylus + SDL
+//  https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
 // easytab: #device[13] = Wacom Bamboo One S Pen
+// pen lower: pan
+// ctrl+pen lower: zoom
+// pen upper: erase
 int main() {
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -68,7 +73,18 @@ int main() {
 
             else if (event.type == SDL_SYSWMEVENT) {
                 EasyTabResult res = EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
-                std::cout << "posX: " << EasyTab->PosX << " | posY: " << EasyTab->PosY << " | pressure: " << EasyTab->Pressure << "\n";
+
+                if (res == EASYTAB_OK) {
+                    std::cout << "posX: " << EasyTab->PosX 
+                        << " | posY: " << EasyTab->PosY 
+                        << " | pressure: " << EasyTab->Pressure
+                        << " | touch " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) 
+                        << " | presslo " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Lower) 
+                        << " | presshi " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper)
+                        // << " | altitide: " << EasyTab->Orientation.Altitude
+                        << "\n";
+                    assert(! (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch));
+                }
             }
         }
 
