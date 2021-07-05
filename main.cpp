@@ -4,6 +4,7 @@
 #include <SDL2/SDL_syswm.h>
 #include <X11/Xlib.h> // Every Xlib program must include this
 #include <X11/extensions/XInput.h>
+#include <vector>
 
 #include "assert.h"
 #include "easytab.h"
@@ -22,6 +23,35 @@ using namespace std;
 // pen upper: erase
 // pen lower button: middle
 // pen upper button: right
+
+void set_pixel(SDL_Surface *surface, int x, int y, Uint32 pixel) {
+  Uint32 * const target_pixel = (Uint32 *) ((Uint8 *) surface->pixels
+                                             + y * surface->pitch
+                                             + x * surface->format->BytesPerPixel);
+  *target_pixel = pixel;
+}
+
+struct Circle {
+    int x, y;
+    int radius;
+};
+
+std::vector<Circle> cs;
+
+void draw(SDL_Renderer *renderer, int const WIDTH=600, const int HEIGHT=400) {
+    for(Circle c : cs) {
+        SDL_Rect rect;
+        rect.x = c.x - c.radius;
+        rect.y = c.y - c.radius;
+        rect.w = rect.h = c.radius;
+        // SDL_ALPHA_OPAQUE = 255;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+        SDL_RenderFillRect(renderer, &rect);
+    }
+}
+
+
+
 int main() {
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -87,6 +117,13 @@ int main() {
                         << " | presshi " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper)
                         << " | altitide: " << EasyTab->Orientation.Altitude
                         << "\n";
+                    if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
+                        Circle c;
+                        c.x = EasyTab->PosX[0];
+                        c.y = EasyTab->PosY[0];
+                        c.radius = EasyTab->Pressure[0] * 10;
+                        cs.push_back(c);
+                    }
                 }
             }
             else if (event.type == SDL_KEYDOWN) {
@@ -118,7 +155,7 @@ int main() {
         // Fill the screen with the colour
         SDL_SetRenderDrawColor(renderer, red, green, blue, 255);
         SDL_RenderClear(renderer);
-
+        draw(renderer);
         SDL_RenderPresent(renderer);
     }
 
