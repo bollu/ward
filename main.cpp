@@ -186,12 +186,13 @@ int main() {
                         int dlsq = dx * dx + dy * dy;
 
 
-                        for (int i = 0; i <= 10; i++) {
+                        const int NUM_INTERPOLANTS = 5;
+                        for (int i = 0; i <= NUM_INTERPOLANTS; i++) {
                         cout << "i: " << i << " | dlsq: " << dlsq << "###\n";
                             Circle c;
-                            c.x = lerp(float(i) / 10.0, g_curvestate.prevx,
+                            c.x = lerp(float(i) / NUM_INTERPOLANTS, g_curvestate.prevx,
                                        g_renderstate.panx + g_penstate.x);
-                            c.y = lerp(float(i) / 10.0, g_curvestate.prevy,
+                            c.y = lerp(float(i) / NUM_INTERPOLANTS, g_curvestate.prevy,
                                        g_renderstate.pany + g_penstate.y);
                             c.radius = EasyTab->Pressure[0] *
                                        EasyTab->Pressure[0] * 30;
