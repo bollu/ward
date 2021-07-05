@@ -12,8 +12,8 @@
 using namespace std;
 using namespace std;
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
+#define SCREEN_WIDTH 1280
+#define SCREEN_HEIGHT 720
 
 //  https://github.com/serge-rgb/milton --- has great reference code for stylus + SDL
 //  https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
@@ -36,14 +36,35 @@ struct Circle {
     int radius;
 };
 
+
+struct PenState {
+    int x, y;
+    PenState() : x(0), y(0) {};
+} g_penstate;
+
+struct PanState {
+    bool panning;
+    int startpanx; int startpany;
+    int startx; int starty;
+
+    PanState() : panning(false), startpanx(0), startpany(0), startx(0), starty(0) {};
+} g_panstate;
+
+struct RenderState {
+    float zoom;
+    int panx, pany;
+    RenderState() : zoom(1), panx(0), pany(0) {};
+} g_renderstate;
 std::vector<Circle> cs;
 
-void draw(SDL_Renderer *renderer, int const WIDTH=600, const int HEIGHT=400) {
+void draw(SDL_Renderer *renderer, int const WIDTH=SCREEN_WIDTH, const int HEIGHT=SCREEN_HEIGHT) {
     for(Circle c : cs) {
         SDL_Rect rect;
         rect.x = c.x - c.radius;
         rect.y = c.y - c.radius;
         rect.w = rect.h = c.radius;
+        rect.x -= g_renderstate.panx;
+        rect.y -= g_renderstate.pany;
         // SDL_ALPHA_OPAQUE = 255;
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
         SDL_RenderFillRect(renderer, &rect);
@@ -66,7 +87,7 @@ int main() {
     // Create a window
     SDL_Window *window =
         SDL_CreateWindow("Demo Game", SDL_WINDOWPOS_UNDEFINED,
-                         SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_OPENGL);
+                         SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_OPENGL);
     if (window == nullptr) {
         SDL_Log("Could not create a window: %s", SDL_GetError());
         return -1;
@@ -121,11 +142,17 @@ int main() {
                         << " | presshi " << (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper)
                         << " | altitide: " << EasyTab->Orientation.Altitude
                         << "\n";
-                    if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
+                    g_penstate.x = EasyTab->PosX[0];
+                    g_penstate.y = EasyTab->PosY[0];
+
+                    if (g_panstate.panning) {
+                        g_renderstate.panx = g_panstate.startpanx + (g_panstate.startx - g_penstate.x);
+                        g_renderstate.pany = g_panstate.startpany + (g_panstate.starty - g_penstate.y);
+                    } else if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
                         Circle c;
-                        c.x = EasyTab->PosX[0];
-                        c.y = EasyTab->PosY[0];
-                        c.radius = EasyTab->Pressure[0] * 30;
+                        c.x = g_renderstate.panx +  EasyTab->PosX[0];
+                        c.y = g_renderstate.pany + EasyTab->PosY[0];
+                        c.radius = EasyTab->Pressure[0] * EasyTab->Pressure[0] * 30;
                         cs.push_back(c);
                     }
                 }
@@ -141,7 +168,31 @@ int main() {
                     case SDL_BUTTON_RIGHT:
                         button_name = "right"; break;
                     case SDL_BUTTON_MIDDLE:
-                        button_name = "middle"; break;
+                        button_name = "middle";
+                        g_panstate.panning = true;
+                        g_panstate.startpanx = g_renderstate.panx;
+                        g_panstate.startpany = g_renderstate.pany;
+                        g_panstate.startx = g_penstate.x;
+                        g_panstate.starty = g_penstate.y;
+                        break;
+                    default:
+                        button_name = "unk"; break;
+
+                }
+                cout << "mousedown: |" << button_name << "\n";
+            }
+
+            else if (event.type == SDL_MOUSEBUTTONUP){
+                string button_name = "unk";
+                switch (event.button.button) {
+                    case SDL_BUTTON_LEFT:
+                        button_name = "left"; break;
+                    case SDL_BUTTON_RIGHT:
+                        button_name = "right"; break;
+                    case SDL_BUTTON_MIDDLE:
+                        button_name = "middle"; 
+                        g_panstate.panning = false;
+                        break;
                     default:
                         button_name = "unk"; break;
 
