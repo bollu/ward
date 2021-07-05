@@ -52,6 +52,10 @@ void draw(SDL_Renderer *renderer, int const WIDTH=600, const int HEIGHT=400) {
 
 
 
+// https://stackoverflow.com/a/3069122/5305365
+// Approximate General Sweep Boundary of a 2D Curved Object,
+// dynadraw: http://www.graficaobscura.com/dyna/dynadraw.c
+// SDL2-cairo: https://github.com/tsuu32/sdl2-cairo-example
 int main() {
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
@@ -121,7 +125,7 @@ int main() {
                         Circle c;
                         c.x = EasyTab->PosX[0];
                         c.y = EasyTab->PosY[0];
-                        c.radius = EasyTab->Pressure[0] * 10;
+                        c.radius = EasyTab->Pressure[0] * 30;
                         cs.push_back(c);
                     }
                 }
