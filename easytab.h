@@ -152,6 +152,7 @@
 #ifndef EASYTAB_H
 #define EASYTAB_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -174,6 +175,7 @@ typedef enum
     EASYTAB_DLL_LOAD_ERROR         = -3,
     EASYTAB_WACOM_WIN32_ERROR      = -4,
     EASYTAB_INVALID_FUNCTION_ERROR = -5,
+    EASYTAB_NO_TABLETS_FOUND       = -6,
 
     EASYTAB_EVENT_NOT_HANDLED = -16,
 } EasyTabResult;
@@ -669,9 +671,12 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
     XDeviceInfoPtr Devices = (XDeviceInfoPtr)XListInputDevices(Disp, &Count);
     if (!Devices) { return EASYTAB_X11_ERROR; }
 
+    fprintf(stderr, "easytab: #devices |%d|\n", Count);
     for (int32_t i = 0; i < Count; i++)
     {
+        fprintf(stderr, "easytab: #device[%d] = %s\n", i, Devices[i].name);
         if (!strstr(Devices[i].name, "stylus") &&
+            !strstr(Devices[i].name, "Pen") && 
             !strstr(Devices[i].name, "eraser")) { continue; }
 
         EasyTab->Device = XOpenDevice(Disp, Devices[i].id);
@@ -731,7 +736,7 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
     XFreeDeviceList(Devices);
 
     if (EasyTab->Device != 0) { return EASYTAB_OK; }
-    else                      { return EASYTAB_X11_ERROR; }
+    else                      { return EASYTAB_NO_TABLETS_FOUND; }
 }
 
 EasyTabResult EasyTab_HandleEvent(XEvent* Event)
