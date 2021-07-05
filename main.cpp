@@ -64,6 +64,17 @@ struct PanState {
         : panning(false), startpanx(0), startpany(0), startx(0), starty(0){};
 } g_panstate;
 
+
+struct ZoomState {
+    bool zooming;
+    float startzoom;
+    int startx;
+    int starty;
+
+    ZoomState()
+        : zooming(false), startzoom(1), startx(0), starty(0){};
+} g_zoomstate;
+
 struct RenderState {
     float zoom;
     int panx, pany;
@@ -80,6 +91,10 @@ void draw(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
         rect.w = rect.h = c.radius;
         rect.x -= g_renderstate.panx;
         rect.y -= g_renderstate.pany;
+        rect.x *= g_renderstate.zoom;
+        rect.y *= g_renderstate.zoom;
+        rect.w *= g_renderstate.zoom;
+        rect.h *= g_renderstate.zoom;
         // SDL_ALPHA_OPAQUE = 255;
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
         SDL_RenderFillRect(renderer, &rect);
@@ -173,6 +188,17 @@ int main() {
                                              (g_panstate.startx - g_penstate.x);
                         g_renderstate.pany = g_panstate.startpany +
                                              (g_panstate.starty - g_penstate.y);
+                    } else if (g_zoomstate.zooming) {
+                        const int dx = -(g_zoomstate.startx  - g_penstate.x);
+                        const int dy = -(g_zoomstate.starty  - g_penstate.y);
+                        float dl = 0;
+                        if (abs(dx) > abs(dy)) {
+                            dl = dx;
+                        } else {
+                            dl = dy;
+                        };
+                        static const float ZOOM_FACTOR = 4e-3;
+                        g_renderstate.zoom = g_zoomstate.startzoom + ZOOM_FACTOR *  dl;
                     } else if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
                         if (!g_curvestate.initialized) {
                             g_curvestate.startx = g_curvestate.prevx =
@@ -217,6 +243,10 @@ int main() {
                         break;
                     case SDL_BUTTON_RIGHT:
                         button_name = "right";
+                        g_zoomstate.zooming = true;
+                        g_zoomstate.startzoom = g_renderstate.zoom;
+                        g_zoomstate.startx = g_penstate.x;
+                        g_zoomstate.starty = g_penstate.y;
                         break;
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
@@ -241,6 +271,7 @@ int main() {
                         break;
                     case SDL_BUTTON_RIGHT:
                         button_name = "right";
+                        g_zoomstate.zooming = false;
                         break;
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
