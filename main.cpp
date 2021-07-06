@@ -65,21 +65,21 @@ struct PanState {
 } g_panstate;
 
 
-struct ZoomState {
-    bool zooming;
-    float startzoom;
-    int startx;
-    int starty;
+struct OverviewState {
+    bool overviewing;
+    int panx;
+    int pany;
 
-    ZoomState()
-        : zooming(false), startzoom(1), startx(0), starty(0){};
-} g_zoomstate;
+    OverviewState()
+        : overviewing(false), panx(0), pany(0){};
+} g_overviewstate;
 
 struct RenderState {
     float zoom;
     int panx, pany;
     RenderState() : zoom(1), panx(0), pany(0){};
 } g_renderstate;
+
 std::vector<Circle> cs;
 
 void draw(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
@@ -95,7 +95,6 @@ void draw(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
         rect.y *= g_renderstate.zoom;
         rect.w *= g_renderstate.zoom;
         rect.h *= g_renderstate.zoom;
-        // SDL_ALPHA_OPAQUE = 255;
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
         SDL_RenderFillRect(renderer, &rect);
     }
@@ -119,7 +118,7 @@ int main() {
     }
 
     // Create a window
-    SDL_Window *window = SDL_CreateWindow("Demo Game", SDL_WINDOWPOS_UNDEFINED,
+    SDL_Window *window = SDL_CreateWindow("WARD", SDL_WINDOWPOS_UNDEFINED,
                                           SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH,
                                           SCREEN_HEIGHT, SDL_WINDOW_OPENGL);
     if (window == nullptr) {
@@ -183,23 +182,32 @@ int main() {
                     g_penstate.x = EasyTab->PosX[0];
                     g_penstate.y = EasyTab->PosY[0];
 
+                    static const float PAN_FACTOR = 5;
+                    if (g_overviewstate.overviewing) {
+
+                        // if tapped, move to tap location
+                        if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
+                            g_renderstate.panx = g_penstate.x * (1.0 / g_renderstate.zoom);
+                            g_renderstate.pany = g_penstate.y * (1.0 / g_renderstate.zoom);
+                            g_renderstate.zoom = 1.0;
+                            g_overviewstate.overviewing = false;
+                        }
+
+                        // this is in charge of all events.
+                        // skip events.
+                        continue;
+
+                    } 
+
                     if (g_panstate.panning) {
                         g_renderstate.panx = g_panstate.startpanx +
-                                             (g_panstate.startx - g_penstate.x);
+                                             PAN_FACTOR * (g_panstate.startx - g_penstate.x);
                         g_renderstate.pany = g_panstate.startpany +
-                                             (g_panstate.starty - g_penstate.y);
-                    } else if (g_zoomstate.zooming) {
-                        const int dx = -(g_zoomstate.startx  - g_penstate.x);
-                        const int dy = -(g_zoomstate.starty  - g_penstate.y);
-                        float dl = 0;
-                        if (abs(dx) > abs(dy)) {
-                            dl = dx;
-                        } else {
-                            dl = dy;
-                        };
-                        static const float ZOOM_FACTOR = 4e-3;
-                        g_renderstate.zoom = g_zoomstate.startzoom + ZOOM_FACTOR *  dl;
-                    } else if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
+                                             PAN_FACTOR * (g_panstate.starty - g_penstate.y);
+                        
+                    } 
+
+                    if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
                         if (!g_curvestate.initialized) {
                             g_curvestate.startx = g_curvestate.prevx =
                                 g_penstate.x + g_renderstate.panx;
@@ -227,7 +235,9 @@ int main() {
 
                         g_curvestate.prevx = g_renderstate.panx + g_penstate.x;
                         g_curvestate.prevy = g_renderstate.pany + g_penstate.y;
-                    } else if (!(EasyTab->Buttons &
+                    } 
+
+                    if (!(EasyTab->Buttons &
                                  EasyTab_Buttons_Pen_Touch)) {
                         g_curvestate.initialized = false;
                     }
@@ -243,11 +253,22 @@ int main() {
                         break;
                     case SDL_BUTTON_RIGHT:
                         button_name = "right";
-                        g_zoomstate.zooming = true;
-                        g_zoomstate.startzoom = g_renderstate.zoom;
-                        g_zoomstate.startx = g_penstate.x;
-                        g_zoomstate.starty = g_penstate.y;
-                        break;
+                        if (!g_overviewstate.overviewing) {
+                            g_overviewstate.overviewing = true;
+                            g_renderstate.zoom = 1.0 / 5;
+                            g_overviewstate.panx = g_renderstate.panx;
+                            g_overviewstate.pany = g_renderstate.pany;
+                            g_renderstate.panx = g_renderstate.pany = 0;
+                            break;
+                        } 
+                        if (g_overviewstate.overviewing) {
+                            g_overviewstate.overviewing = false;
+                            g_renderstate.zoom = 1.0; 
+                            g_renderstate.panx  = g_overviewstate.panx;
+                            g_renderstate.pany = g_overviewstate.pany;
+                            break;
+                        } 
+
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
                         g_panstate.panning = true;
@@ -270,8 +291,6 @@ int main() {
                         button_name = "left";
                         break;
                     case SDL_BUTTON_RIGHT:
-                        button_name = "right";
-                        g_zoomstate.zooming = false;
                         break;
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
@@ -286,12 +305,17 @@ int main() {
         }
 
         // Randomly change the colour
-        Uint8 red = 0xEE;
-        Uint8 green = 0xEE;
-        Uint8 blue = 0xEE;
 
         // Fill the screen with the colour
-        SDL_SetRenderDrawColor(renderer, red, green, blue, 255);
+        if (g_overviewstate.overviewing) {
+            Uint8 gray = 0xDD;
+            Uint8 opaque = 255;
+            SDL_SetRenderDrawColor(renderer, gray, gray, gray, opaque);
+        } else {
+            Uint8 gray = 0xEE;
+            Uint8 opaque = 255;
+            SDL_SetRenderDrawColor(renderer, gray, gray, gray, opaque);
+        }
         SDL_RenderClear(renderer);
         draw(renderer);
         SDL_RenderPresent(renderer);
