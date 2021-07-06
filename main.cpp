@@ -33,9 +33,26 @@ void set_pixel(SDL_Surface *surface, int x, int y, Uint32 pixel) {
     *target_pixel = pixel;
 }
 
+// TODO: refactor with vec..
+struct Vec {
+    int x;
+    int y;
+};
+
+struct Color {
+    int r, g, b;
+    explicit Color() { this->r = this->g = this->b = 0; };
+
+    static Color RGB(int r, int g, int b) { return Color(r, g, b); }
+
+   private:
+    Color(int r, int g, int b) : r(r), g(g), b(b) {}
+};
+
 struct Circle {
     int x, y;
     int radius;
+    Color color;
 };
 
 struct CurveState {
@@ -64,14 +81,24 @@ struct PanState {
         : panning(false), startpanx(0), startpany(0), startx(0), starty(0){};
 } g_panstate;
 
+static const vector<Color> g_colorwheel = {
+    Color::RGB(0, 0, 0), Color::RGB(255, 0, 0), Color::RGB(0, 255, 0),
+    Color::RGB(0, 0, 255)};
+
+struct ColorState {
+    bool colorpicking = false;
+    int startpickx;
+    int startpicky;
+    int color_wheel_ix = 0; // black
+} g_colorstate;
+
 
 struct OverviewState {
     bool overviewing;
     int panx;
     int pany;
 
-    OverviewState()
-        : overviewing(false), panx(0), pany(0){};
+    OverviewState() : overviewing(false), panx(0), pany(0){};
 } g_overviewstate;
 
 struct RenderState {
@@ -82,7 +109,7 @@ struct RenderState {
 
 std::vector<Circle> cs;
 
-void draw(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
+void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
           const int HEIGHT = SCREEN_HEIGHT) {
     for (Circle c : cs) {
         SDL_Rect rect;
@@ -95,12 +122,34 @@ void draw(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
         rect.y *= g_renderstate.zoom;
         rect.w *= g_renderstate.zoom;
         rect.h *= g_renderstate.zoom;
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+        SDL_SetRenderDrawColor(renderer, c.color.r, c.color.g, c.color.b,
+                               SDL_ALPHA_OPAQUE);
         SDL_RenderFillRect(renderer, &rect);
     }
 }
 
-double lerp(double t, int x0, int x1) { 
+void draw_color_wheel(SDL_Renderer *renderer) {
+        // for each color in the color wheel, assign location.
+        for (int i = 0; i < g_colorwheel.size(); ++i) {
+            const float theta_delta = 2.0 * M_PI / g_colorwheel.size();
+            float theta = theta_delta * i;
+            static const int WHEEL_RADIUS = 120;
+
+            int cx = g_colorstate.startpickx + cos(theta) * WHEEL_RADIUS;
+            int cy = g_colorstate.startpicky + sin(theta) * WHEEL_RADIUS;
+            const int PALETTE_RADIUS = 60 + 60 * (g_colorstate.color_wheel_ix == i);
+            SDL_Rect rect;
+            rect.x = cx - PALETTE_RADIUS;
+            rect.y = cy - PALETTE_RADIUS;
+            rect.w = rect.h = 2 * PALETTE_RADIUS;
+            Color color = g_colorwheel[i];
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
+                                   SDL_ALPHA_OPAQUE);
+            SDL_RenderFillRect(renderer, &rect);
+        }
+}
+
+double lerp(double t, int x0, int x1) {
     t = std::min<double>(1, std::max<double>(0, t));
     assert(t >= 0);
     assert(t <= 1);
@@ -184,11 +233,71 @@ int main() {
 
                     static const float PAN_FACTOR = 5;
                     if (g_overviewstate.overviewing) {
+                        if (g_colorstate.colorpicking) {
+                            // cur - start = delta
+                            // => start + delta = cur
 
+                            static const int WHEEL_FACTOR = 3;
+                            int dx = WHEEL_FACTOR * (g_penstate.x - g_colorstate.startpickx);
+                            int dy = WHEEL_FACTOR * (g_penstate.y - g_colorstate.startpicky);
+
+                            float theta = 0;
+
+                            // when we draw, we draw it as
+                            // (x + cos(theta), y + sin(theta))), but our
+                            // coord system is positive in the
+                            // +>
+                            // v
+                            // direction. So:
+                            // down right -> angle in [0, pi/2]
+                            //
+                            if (dx >= 0) {
+                                // right
+                                if (dy >= 0) {
+                                    std::cerr << "DOWN-RIGHT\n";
+                                    // down
+                                    // +>
+                                    // v
+                                    theta = atan2(abs(dy), abs(dx));
+                                } else {
+                                    std::cerr << "UP-RIGHT\n";
+                                    // up
+                                    // ^
+                                    // +>
+                                    theta = 3*M_PI + atan2(abs(dy), abs(dx));
+                                }
+                            } else {
+                                //left (<)
+
+                                if (dy >= 0) {
+                                    std::cerr << "DOWN-LEFT\n";
+                                    // down
+                                    // <+
+                                    //  v
+                                    theta = M_PI/2 + atan2(abs(dy), abs(dx));
+                                } else {
+                                    // up
+                                    //  ^ 
+                                    // <+
+                                    std::cerr << "UP-LEFT\n";
+                                    theta = M_PI  + atan2(abs(dy), abs(dx));
+                                }
+                            }
+
+                            g_colorstate.color_wheel_ix = (theta * g_colorwheel.size()) / (2 * M_PI);
+                            g_colorstate.color_wheel_ix = min<int>(g_colorstate.color_wheel_ix, g_colorwheel.size()-1);
+                            g_colorstate.color_wheel_ix = max<int>(0, g_colorstate.color_wheel_ix);
+                            assert(g_colorstate.color_wheel_ix >= 0);
+                            assert(g_colorstate.color_wheel_ix < g_colorwheel.size());
+                            // this is in charge of all events. skip.
+                            continue;
+                        }
                         // if tapped, move to tap location
                         if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
-                            g_renderstate.panx = g_penstate.x * (1.0 / g_renderstate.zoom);
-                            g_renderstate.pany = g_penstate.y * (1.0 / g_renderstate.zoom);
+                            g_renderstate.panx =
+                                g_penstate.x * (1.0 / g_renderstate.zoom);
+                            g_renderstate.pany =
+                                g_penstate.y * (1.0 / g_renderstate.zoom);
                             g_renderstate.zoom = 1.0;
                             g_overviewstate.overviewing = false;
                         }
@@ -196,16 +305,16 @@ int main() {
                         // this is in charge of all events.
                         // skip events.
                         continue;
-
-                    } 
+                    }
 
                     if (g_panstate.panning) {
-                        g_renderstate.panx = g_panstate.startpanx +
-                                             PAN_FACTOR * (g_panstate.startx - g_penstate.x);
-                        g_renderstate.pany = g_panstate.startpany +
-                                             PAN_FACTOR * (g_panstate.starty - g_penstate.y);
-                        
-                    } 
+                        g_renderstate.panx =
+                            g_panstate.startpanx +
+                            PAN_FACTOR * (g_panstate.startx - g_penstate.x);
+                        g_renderstate.pany =
+                            g_panstate.startpany +
+                            PAN_FACTOR * (g_panstate.starty - g_penstate.y);
+                    }
 
                     if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
                         if (!g_curvestate.initialized) {
@@ -219,26 +328,28 @@ int main() {
                         int dy = abs(g_penstate.y - g_curvestate.prevy);
                         int dlsq = dx * dx + dy * dy;
 
-
                         const int NUM_INTERPOLANTS = 5;
                         for (int i = 0; i <= NUM_INTERPOLANTS; i++) {
-                        cout << "i: " << i << " | dlsq: " << dlsq << "###\n";
+                            cout << "i: " << i << " | dlsq: " << dlsq
+                                 << "###\n";
                             Circle c;
-                            c.x = lerp(float(i) / NUM_INTERPOLANTS, g_curvestate.prevx,
+                            c.x = lerp(float(i) / NUM_INTERPOLANTS,
+                                       g_curvestate.prevx,
                                        g_renderstate.panx + g_penstate.x);
-                            c.y = lerp(float(i) / NUM_INTERPOLANTS, g_curvestate.prevy,
+                            c.y = lerp(float(i) / NUM_INTERPOLANTS,
+                                       g_curvestate.prevy,
                                        g_renderstate.pany + g_penstate.y);
                             c.radius = EasyTab->Pressure[0] *
                                        EasyTab->Pressure[0] * 30;
+                            c.color = g_colorwheel[g_colorstate.color_wheel_ix];
                             cs.push_back(c);
                         }
 
                         g_curvestate.prevx = g_renderstate.panx + g_penstate.x;
                         g_curvestate.prevy = g_renderstate.pany + g_penstate.y;
-                    } 
+                    }
 
-                    if (!(EasyTab->Buttons &
-                                 EasyTab_Buttons_Pen_Touch)) {
+                    if (!(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
                         g_curvestate.initialized = false;
                     }
                 }
@@ -260,22 +371,32 @@ int main() {
                             g_overviewstate.pany = g_renderstate.pany;
                             g_renderstate.panx = g_renderstate.pany = 0;
                             break;
-                        } 
+                        }
                         if (g_overviewstate.overviewing) {
                             g_overviewstate.overviewing = false;
-                            g_renderstate.zoom = 1.0; 
-                            g_renderstate.panx  = g_overviewstate.panx;
+                            g_renderstate.zoom = 1.0;
+                            g_renderstate.panx = g_overviewstate.panx;
                             g_renderstate.pany = g_overviewstate.pany;
                             break;
-                        } 
+                        }
+                        break;
 
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
-                        g_panstate.panning = true;
-                        g_panstate.startpanx = g_renderstate.panx;
-                        g_panstate.startpany = g_renderstate.pany;
-                        g_panstate.startx = g_penstate.x;
-                        g_panstate.starty = g_penstate.y;
+                        if (!g_overviewstate.overviewing) {
+                            g_panstate.panning = true;
+                            g_panstate.startpanx = g_renderstate.panx;
+                            g_panstate.startpany = g_renderstate.pany;
+                            g_panstate.startx = g_penstate.x;
+                            g_panstate.starty = g_penstate.y;
+                            break;
+                        }
+
+                        if (g_overviewstate.overviewing) {
+                            g_colorstate.colorpicking = true;
+                            g_colorstate.startpickx = g_penstate.x;
+                            g_colorstate.startpicky = g_penstate.y;
+                        }
                         break;
                     default:
                         button_name = "unk";
@@ -294,7 +415,15 @@ int main() {
                         break;
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
-                        g_panstate.panning = false;
+                        if (!g_overviewstate.overviewing) {
+                            g_panstate.panning = false;
+                            break;
+                        }
+
+                        if (g_overviewstate.overviewing) {
+                            g_colorstate.colorpicking = false;
+                            break;
+                        }
                         break;
                     default:
                         button_name = "unk";
@@ -311,13 +440,18 @@ int main() {
             Uint8 gray = 0xDD;
             Uint8 opaque = 255;
             SDL_SetRenderDrawColor(renderer, gray, gray, gray, opaque);
+
         } else {
             Uint8 gray = 0xEE;
             Uint8 opaque = 255;
             SDL_SetRenderDrawColor(renderer, gray, gray, gray, opaque);
         }
         SDL_RenderClear(renderer);
-        draw(renderer);
+        draw_pen_strokes(renderer);
+        if (g_colorstate.colorpicking) {
+            draw_color_wheel(renderer);
+        }
+
         SDL_RenderPresent(renderer);
     }
 
