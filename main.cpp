@@ -13,8 +13,9 @@
 using namespace std;
 using namespace std;
 
-#define SCREEN_WIDTH 1280
-#define SCREEN_HEIGHT 720
+// 1080p
+#define SCREEN_WIDTH 1920
+#define SCREEN_HEIGHT 1000
 
 struct Color {
     int r, g, b;
@@ -41,7 +42,7 @@ static const vector<Color> g_palette = {
 
 // leave gap in beginning for eraser.
 static const int PALETTE_WIDTN = SCREEN_WIDTH / (1 + g_palette.size());
-static const int PALETTE_HEIGHT = 40.0;
+static const int PALETTE_HEIGHT = SCREEN_HEIGHT / 20;
 
 //  https://github.com/serge-rgb/milton --- has great reference code for stylus
 //  + SDL
@@ -298,7 +299,7 @@ int main() {
                         int dy = abs(g_penstate.y - g_curvestate.prevy);
                         int dlsq = dx * dx + dy * dy;
 
-                        const int NUM_INTERPOLANTS = 5;
+                        const int NUM_INTERPOLANTS = 3;
                         for (int i = 0; i <= NUM_INTERPOLANTS; i++) {
                             cout << "i: " << i << " | dlsq: " << dlsq
                                  << "###\n";
