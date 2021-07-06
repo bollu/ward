@@ -395,6 +395,8 @@ int main() {
                 //     << " | presshi "
                 //     << (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper)
                 //     << " | altitide: " << EasyTab->Orientation.Altitude
+                //     << " | azimuth: " << EasyTab->Orientation.Azimuth
+                //     << " | twist: " << EasyTab->Orientation.Twist
                 //     << "\n";
 
                 // TODO: draw a line from old position to current position
