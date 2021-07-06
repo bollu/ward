@@ -6,6 +6,8 @@
 #include <X11/extensions/XInput.h>
 
 #include <vector>
+#include <map>
+#include <unordered_map>
 
 #include "assert.h"
 #include "easytab.h"
@@ -60,15 +62,22 @@ struct Vec {
     int y;
 };
 
+using ll = long long;
+static ll max_circle_guid = 0;
+
+using ll = long long;
 struct Circle {
+    ll guid;
     int x, y;
     int radius;
     bool erased;
     Color color;
 
-    Circle(int x, int y, int radius, Color color)
-        : x(x), y(y), radius(radius), color(color), erased(false) {}
+    Circle(int x, int y, int radius, Color color, ll guid)
+        : x(x), y(y), radius(radius), color(color), erased(false), guid(guid) {
+        }
 };
+
 
 struct CurveState {
     int startx;
@@ -119,8 +128,50 @@ struct RenderState {
 
 std::vector<Circle> g_circles;
 
+
+static const int SPATIAL_HASH_CELL_SIZE = 300;
+map<pair<int, int>, vector<int>> g_spatial_hash;
+
+void add_circle_to_spatial_hash(const Circle &c) {
+    int sx = c.x / SPATIAL_HASH_CELL_SIZE;
+    int sy = c.y / SPATIAL_HASH_CELL_SIZE;
+    // TODO: treat circles as rects, not points.
+    g_spatial_hash[make_pair(sx, sy)].push_back(c.guid);
+}
+
+
+
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
                       const int HEIGHT = SCREEN_HEIGHT) {
+
+    const int startx = g_renderstate.panx;
+    const int starty = g_renderstate.pany;
+    const int endx = startx + SCREEN_WIDTH;
+    const int endy = starty + SCREEN_HEIGHT;
+
+    for(int xix = startx/SPATIAL_HASH_CELL_SIZE-1; xix <= endx/SPATIAL_HASH_CELL_SIZE; ++xix) {
+        for(int yix = starty/SPATIAL_HASH_CELL_SIZE-1; yix < endy; ++yix) {
+            for (int cix: g_spatial_hash[make_pair(xix, yix)]) {
+                const Circle &c = g_circles[cix];
+                // cout << "\t- circle(x=" << c.x << " y=" << c.y << " rad=" << c.radius << ")\n";
+                SDL_Rect rect;
+                rect.x = c.x - c.radius;
+                rect.y = c.y - c.radius;
+                rect.w = rect.h = c.radius;
+                rect.x -= g_renderstate.panx;
+                rect.y -= g_renderstate.pany;
+                rect.x *= g_renderstate.zoom;
+                rect.y *= g_renderstate.zoom;
+                rect.w *= g_renderstate.zoom;
+                rect.h *= g_renderstate.zoom;
+                SDL_SetRenderDrawColor(renderer, c.color.r, c.color.g, c.color.b,
+                        SDL_ALPHA_OPAQUE);
+                SDL_RenderFillRect(renderer, &rect);
+            }
+        }
+    }
+
+    /*
     for (const Circle &c : g_circles) {
         if (c.erased) {
             continue;
@@ -139,6 +190,7 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
                                SDL_ALPHA_OPAQUE);
         SDL_RenderFillRect(renderer, &rect);
     }
+    */
 }
 
 void draw_palette(SDL_Renderer *renderer) {
@@ -186,6 +238,7 @@ double lerp(double t, int x0, int x1) {
 static const int GC_NUM_ERASED_THRESHOLD = 10;
 int g_num_erased = 0;
 void garbage_collect() {
+    assert(false && "no longer used");
     std::cerr << "- GCING\n";
     const int start_size = g_circles.size();
     vector<Circle> newcs;
@@ -338,8 +391,13 @@ int main() {
                                          g_renderstate.pany + g_penstate.y);
                             int radius = EasyTab->Pressure[p] *
                                          EasyTab->Pressure[p] * 30;
-                            Color color = g_palette[g_colorstate.colorix];
-                            g_circles.push_back(Circle(x, y, radius, color));
+                            const Color color = g_palette[g_colorstate.colorix];
+                            assert(max_circle_guid < (1ll << 62) && "too many circles!");
+
+                            const Circle circle = Circle(x, y, radius, color, max_circle_guid++);
+                            g_circles.push_back(circle);
+                            // add the last created circle to the spatial hash.
+                            add_circle_to_spatial_hash(circle);
                         }
 
                         g_curvestate.prevx = g_renderstate.panx + g_penstate.x;
@@ -374,7 +432,13 @@ int main() {
                             40 + (EasyTab->Pressure[p] * 100);
                         // std::cerr << "ERASING (radius=" << ERASER_RADIUS <<
                         // ")\n";
-                        for (auto &c : g_circles) {
+
+                        const int startx = g_renderstate.panx + g_penstate.x - ERASER_RADIUS;
+                        const int starty = g_renderstate.pany + g_penstate.y - ERASER_RADIUS;
+                        const int endx = startx + 2*ERASER_RADIUS;
+                        const int endy = starty + 2*ERASER_RADIUS;
+
+                        for (Circle &c : g_circles) {
                             if (c.erased) {
                                 continue;
                             }
@@ -484,7 +548,7 @@ int main() {
         SDL_RenderPresent(renderer);
 
         if (g_num_erased >= GC_NUM_ERASED_THRESHOLD) {
-            garbage_collect();
+            // garbage_collect();
         }
     }
 
