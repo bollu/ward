@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <map>
+#include <set>
 #include <unordered_map>
 
 #include "assert.h"
@@ -130,13 +131,13 @@ std::vector<Circle> g_circles;
 
 
 static const int SPATIAL_HASH_CELL_SIZE = 300;
-map<pair<int, int>, vector<int>> g_spatial_hash;
+map<pair<int, int>, set<int>> g_spatial_hash;
 
 void add_circle_to_spatial_hash(const Circle &c) {
     int sx = c.x / SPATIAL_HASH_CELL_SIZE;
     int sy = c.y / SPATIAL_HASH_CELL_SIZE;
     // TODO: treat circles as rects, not points.
-    g_spatial_hash[make_pair(sx, sy)].push_back(c.guid);
+    g_spatial_hash[make_pair(sx, sy)].insert(c.guid);
 }
 
 
@@ -153,6 +154,7 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
         for(int yix = starty/SPATIAL_HASH_CELL_SIZE-1; yix < endy; ++yix) {
             for (int cix: g_spatial_hash[make_pair(xix, yix)]) {
                 const Circle &c = g_circles[cix];
+                if (c.erased) { continue; }
                 // cout << "\t- circle(x=" << c.x << " y=" << c.y << " rad=" << c.radius << ")\n";
                 SDL_Rect rect;
                 rect.x = c.x - c.radius;
@@ -427,7 +429,6 @@ int main() {
                     // hovering, since we got an event or pressing down, while
                     // erasing.
                     if (g_colorstate.erasing) {
-                        vector<int> tokill;
                         const int ERASER_RADIUS =
                             40 + (EasyTab->Pressure[p] * 100);
                         // std::cerr << "ERASING (radius=" << ERASER_RADIUS <<
@@ -438,22 +439,45 @@ int main() {
                         const int endx = startx + 2*ERASER_RADIUS;
                         const int endy = starty + 2*ERASER_RADIUS;
 
-                        for (Circle &c : g_circles) {
-                            if (c.erased) {
-                                continue;
+                        for(int xix = startx/SPATIAL_HASH_CELL_SIZE-1; xix <= endx/SPATIAL_HASH_CELL_SIZE+1; ++xix) {
+                            for(int yix = starty/SPATIAL_HASH_CELL_SIZE-1; yix <= endy/SPATIAL_HASH_CELL_SIZE+1; ++yix) {
+                                set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
+                                vector<int> to_erase;
+                                for(int cix: bucket) {
+                                    Circle &c = g_circles[cix];
+                                    if (c.erased) { continue; }
+                                    const int dx =
+                                        g_renderstate.panx + g_penstate.x - c.x;
+                                    const int dy =
+                                        g_renderstate.pany + g_penstate.y - c.y;
+                                    // eraser has some radius without pressing. With
+                                    // pressing, becomes bigger.
+                                    if (dx * dx + dy * dy <=
+                                            ERASER_RADIUS * ERASER_RADIUS) {
+                                        to_erase.push_back(cix);
+                                        g_num_erased++;
+                                    }
+                                }
+                                for(int cix : to_erase) { bucket.erase(cix); }
                             }
-                            const int dx =
-                                g_renderstate.panx + g_penstate.x - c.x;
-                            const int dy =
-                                g_renderstate.pany + g_penstate.y - c.y;
-                            // eraser has some radius without pressing. With
-                            // pressing, becomes bigger.
-                            if (dx * dx + dy * dy <=
-                                ERASER_RADIUS * ERASER_RADIUS) {
-                                c.erased = true;
-                                g_num_erased++;
-                            }
-                        }  // end loop over circles
+                        }
+
+                        // for (Circle &c : g_circles) {
+                        //     if (c.erased) {
+                        //         continue;
+                        //     }
+                        //     const int dx =
+                        //         g_renderstate.panx + g_penstate.x - c.x;
+                        //     const int dy =
+                        //         g_renderstate.pany + g_penstate.y - c.y;
+                        //     // eraser has some radius without pressing. With
+                        //     // pressing, becomes bigger.
+                        //     if (dx * dx + dy * dy <=
+                        //         ERASER_RADIUS * ERASER_RADIUS) {
+                        //         c.erased = true;
+                        //         g_num_erased++;
+                        //     }
+                        // }  // end loop over circles
                     }      // end if(erasing )
                 }          // end loop over packets
             } else if (event.type == SDL_KEYDOWN) {
