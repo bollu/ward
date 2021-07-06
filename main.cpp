@@ -73,11 +73,10 @@ struct Circle {
     ll guid;
     int x, y;
     int radius;
-    bool erased;
     Color color;
 
     Circle(int x, int y, int radius, Color color, ll guid)
-        : x(x), y(y), radius(radius), color(color), erased(false), guid(guid) {}
+        : x(x), y(y), radius(radius), color(color), guid(guid) {}
 };
 
 struct CurveState {
@@ -223,6 +222,7 @@ struct Commander {
 
 } g_commander;
 
+// TODO: overview mode is very sluggish :( 
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
                       const int HEIGHT = SCREEN_HEIGHT) {
     const float zoominv = (1.0 / g_renderstate.zoom);
@@ -234,18 +234,17 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
     for (int xix = startx / SPATIAL_HASH_CELL_SIZE - 1;
          xix <= endx / SPATIAL_HASH_CELL_SIZE; ++xix) {
         for (int yix = starty / SPATIAL_HASH_CELL_SIZE - 1; yix < endy; ++yix) {
+
             if (!g_spatial_hash.count(make_pair(xix, yix))) {
                 continue;
             }
 
-            for (int cix : g_spatial_hash[make_pair(xix, yix)]) {
+            unordered_set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
+            SDL_Rect rect;
+            for (int cix : bucket) {
                 const Circle &c = g_circles[cix];
-                if (c.erased) {
-                    continue;
-                }
                 // cout << "\t- circle(x=" << c.x << " y=" << c.y << " rad=" <<
                 // c.radius << ")\n";
-                SDL_Rect rect;
                 rect.x = c.x - c.radius;
                 rect.y = c.y - c.radius;
                 rect.w = rect.h = c.radius;
@@ -412,6 +411,8 @@ int main() {
                     const int pressure = EasyTab->Pressure[p];
 
                     static const float PAN_FACTOR = 3;
+
+                    // overview
                     if (g_overviewstate.overviewing) {
                         // if tapped, move to tap location
                         if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
@@ -549,9 +550,6 @@ int main() {
                                 vector<int> to_erase;
                                 for (int cix : bucket) {
                                     Circle &c = g_circles[cix];
-                                    if (c.erased) {
-                                        continue;
-                                    }
                                     const int dx =
                                         g_renderstate.panx + g_penstate.x - c.x;
                                     const int dy =
@@ -629,6 +627,13 @@ int main() {
                         button_name = "left";
                         break;
                     case SDL_BUTTON_RIGHT:
+                        // if (g_overviewstate.overviewing) {
+                        //     g_panstate.panning = false;
+                        //     g_renderstate.zoom = 1.0;
+                        //     g_renderstate.panx = g_overviewstate.panx;
+                        //     g_renderstate.pany = g_overviewstate.pany;
+                        //     break;
+                        // }
                         break;
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
