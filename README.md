@@ -1,5 +1,10 @@
 # ward: ward 'aint ready for drawing
 
+![](./static/ward-drawing.png | width=256)
+![](./static/ward-overview.png | width=256)
+
+
+
 No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.org/).
 
 This lacks:
