@@ -16,6 +16,32 @@ using namespace std;
 #define SCREEN_WIDTH 1280
 #define SCREEN_HEIGHT 720
 
+struct Color {
+    int r, g, b;
+    explicit Color() { this->r = this->g = this->b = 0; };
+
+    static Color RGB(int r, int g, int b) { return Color(r, g, b); }
+
+   private:
+    Color(int r, int g, int b) : r(r), g(g), b(b) {}
+};
+
+static const Color g_draw_background_color = Color::RGB(0xEE, 0xEE, 0xEE);
+static const Color g_overview_background_color = Color::RGB(207, 216, 220);
+
+// color palette
+static const vector<Color> g_palette = {
+    Color::RGB(0, 0, 0), // black
+    Color::RGB(158, 158, 158), // gray
+    Color::RGB(233, 30, 99), // R
+    Color::RGB(76, 175, 80), // G
+    Color::RGB(33, 150, 243), // B
+    Color::RGB(255, 160, 0) // gold
+};
+
+static const int PALETTE_WIDTN = SCREEN_WIDTH / g_palette.size();
+static const int PALETTE_HEIGHT = 40.0;
+
 //  https://github.com/serge-rgb/milton --- has great reference code for stylus
 //  + SDL
 //  https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
@@ -37,16 +63,6 @@ void set_pixel(SDL_Surface *surface, int x, int y, Uint32 pixel) {
 struct Vec {
     int x;
     int y;
-};
-
-struct Color {
-    int r, g, b;
-    explicit Color() { this->r = this->g = this->b = 0; };
-
-    static Color RGB(int r, int g, int b) { return Color(r, g, b); }
-
-   private:
-    Color(int r, int g, int b) : r(r), g(g), b(b) {}
 };
 
 struct Circle {
@@ -80,13 +96,6 @@ struct PanState {
     PanState()
         : panning(false), startpanx(0), startpany(0), startx(0), starty(0){};
 } g_panstate;
-
-static const vector<Color> g_colorwheel = {
-    Color::RGB(0, 0, 0), Color::RGB(255, 0, 0), Color::RGB(0, 255, 0),
-    Color::RGB(0, 0, 255)};
-
-static const int PALETTE_WIDTN = SCREEN_WIDTH / g_colorwheel.size();
-static const int PALETTE_HEIGHT = 40.0;
 
 struct ColorState {
     int startpickx;
@@ -129,16 +138,15 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
     }
 }
 
-void draw_color_wheel(SDL_Renderer *renderer) {
+void draw_palette(SDL_Renderer *renderer) {
     // for each color in the color wheel, assign location.
-    for (int i = 0; i < g_colorwheel.size(); ++i) {
-
+    for (int i = 0; i < g_palette.size(); ++i) {
         SDL_Rect rect;
         rect.x = i * PALETTE_WIDTN;
         rect.y = SCREEN_HEIGHT - PALETTE_HEIGHT;
         rect.w = PALETTE_WIDTN;
         rect.h = PALETTE_HEIGHT;
-        Color color = g_colorwheel[i];
+        Color color = g_palette[i];
         SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
                                SDL_ALPHA_OPAQUE);
         SDL_RenderFillRect(renderer, &rect);
@@ -277,8 +285,9 @@ int main() {
                                        g_curvestate.prevy,
                                        g_renderstate.pany + g_penstate.y);
                             c.radius = EasyTab->Pressure[0] *
+                                       EasyTab->Pressure[0] * 
                                        EasyTab->Pressure[0] * 30;
-                            c.color = g_colorwheel[g_colorstate.colorix];
+                            c.color = g_palette[g_colorstate.colorix];
                             cs.push_back(c);
                         }
 
@@ -296,7 +305,7 @@ int main() {
                         // => start + delta = cur
                         g_colorstate.colorix = g_penstate.x / PALETTE_WIDTN;
                         assert(g_colorstate.colorix >= 0);
-                        assert(g_colorstate.colorix < g_colorwheel.size());
+                        assert(g_colorstate.colorix < g_palette.size());
                         continue;
                     }
                 }
@@ -373,19 +382,21 @@ int main() {
 
         // Fill the screen with the colour
         if (g_overviewstate.overviewing) {
-            Uint8 gray = 0xDD;
             Uint8 opaque = 255;
-            SDL_SetRenderDrawColor(renderer, gray, gray, gray, opaque);
+            SDL_SetRenderDrawColor(renderer, g_overview_background_color.r,
+                                   g_overview_background_color.g,
+                                   g_overview_background_color.b, opaque);
 
         } else {
-            Uint8 gray = 0xEE;
             Uint8 opaque = 255;
-            SDL_SetRenderDrawColor(renderer, gray, gray, gray, opaque);
+            SDL_SetRenderDrawColor(renderer, g_draw_background_color.r,
+                                   g_draw_background_color.g,
+                                   g_draw_background_color.b, opaque);
         }
         SDL_RenderClear(renderer);
         draw_pen_strokes(renderer);
         if (!g_panstate.panning && !g_overviewstate.overviewing) {
-            draw_color_wheel(renderer);
+            draw_palette(renderer);
         }
 
         SDL_RenderPresent(renderer);
