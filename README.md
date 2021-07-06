@@ -1,8 +1,24 @@
 # ward: ward 'aint ready for drawing
 
-No-nonsense infinite whiteboard. This lacks custom brushes, layers, saving. 
-Allows pan/zoom, pen colors, a single pressure sensitive thickness, erasers, infinite undo. Supports
-styluses using the [EasyTab](https://github.com/ApoorvaJ/EasyTab) library, and
-renders with reasonable performance using SDL2+Skia+ Maybe OpenGL if necessary.
-Will probably need to organise rendering data using some kind of spatial partitioning to cull.
+No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.org/).
+
+This lacks:
+- multiple types of brushes.
+- layers.
+- save/load.
+- custom palettes
+- ... custom anything, really.
+
+This features:
+
+- An entirely pen-based workflow, no keyboard.
+- Color palette of material colors.
+- panning on an infinite whiteboard.
+- quick minimap view to view the entire whiteboard at a glance.
+
+The code uses:
+
+- the [EasyTab](https://github.com/ApoorvaJ/EasyTab) library to work with Wacom tablets.
+- The [Milton project](https://github.com/serge-rgb/milton) as heavy reference on how to work with tablets.
+- [SDL2](https://www.libsdl.org/) for rendering
 
