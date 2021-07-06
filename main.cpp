@@ -147,7 +147,18 @@ void add_circle_to_spatial_hash(const Circle &c) {
     int sx = c.x / SPATIAL_HASH_CELL_SIZE;
     int sy = c.y / SPATIAL_HASH_CELL_SIZE;
     // TODO: treat circles as rects, not points.
-    g_spatial_hash[make_pair(sx, sy)].insert(c.guid);
+    unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
+
+    // this is already covered.
+    for (int ix : bucket) {
+        const Circle &d = g_circles[ix];
+        int dx = c.x - d.x;
+        int dy = c.y - d.y;
+        int dlsq = dx*dx + dy*dy;
+        if (sqrt(dlsq) + c.radius < d.radius) { return; }
+
+    }
+    bucket.insert(c.guid);
 }
 
 
@@ -390,28 +401,30 @@ int main() {
                                 g_penstate.y + g_renderstate.pany;
                             g_curvestate.initialized = true;
                         }
-                        int dx = abs(g_penstate.x - g_curvestate.prevx);
-                        int dy = abs(g_penstate.y - g_curvestate.prevy);
+
+                        const int dx = abs(g_penstate.x - g_curvestate.prevx);
+                        const int dy = abs(g_penstate.y - g_curvestate.prevy);
+
+                        const int radius = EasyTab->Pressure[p] *
+                            EasyTab->Pressure[p] * 30;
                         int dlsq = dx * dx + dy * dy;
 
-                        const int NUM_INTERPOLANTS = 3;
+                        // too close to matter.
+                        if (dlsq < radius*radius) { continue; }
+
+                        const int NUM_INTERPOLANTS = 2;
                         for (int i = 0; i <= NUM_INTERPOLANTS; i++) {
-                            // std::cerr << "i: " << i << " | dlsq: " << dlsq <<
-                            // "###\n";
-                            int x = lerp(float(i) / NUM_INTERPOLANTS,
+                            int x = lerp(double(i) / NUM_INTERPOLANTS,
                                          g_curvestate.prevx,
                                          g_renderstate.panx + g_penstate.x);
-                            int y = lerp(float(i) / NUM_INTERPOLANTS,
+                            int y = lerp(double(i) / NUM_INTERPOLANTS,
                                          g_curvestate.prevy,
                                          g_renderstate.pany + g_penstate.y);
-                            int radius = EasyTab->Pressure[p] *
-                                         EasyTab->Pressure[p] * 30;
                             const Color color = g_palette[g_colorstate.colorix];
                             assert(max_circle_guid < (1ll << 62) && "too many circles!");
 
                             const Circle circle = Circle(x, y, radius, color, max_circle_guid++);
                             g_circles.push_back(circle);
-                            // add the last created circle to the spatial hash.
                             add_circle_to_spatial_hash(circle);
                         }
 
