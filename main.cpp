@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "assert.h"
 #include "easytab.h"
@@ -130,8 +131,17 @@ struct RenderState {
 std::vector<Circle> g_circles;
 
 
+// dubious has concatenation from stack overflow:
+// https://stackoverflow.com/a/54945214/5305365
+struct hash_pair_int {
+    size_t operator ()(const pair<int, int>& pi) const{
+        return std::hash<int>()(pi.first) * 31 + std::hash<int>()(pi.second);
+    };
+};
+
+
 static const int SPATIAL_HASH_CELL_SIZE = 300;
-map<pair<int, int>, set<int>> g_spatial_hash;
+unordered_map<pair<int, int>, unordered_set<int>, hash_pair_int> g_spatial_hash;
 
 void add_circle_to_spatial_hash(const Circle &c) {
     int sx = c.x / SPATIAL_HASH_CELL_SIZE;
@@ -441,7 +451,8 @@ int main() {
 
                         for(int xix = startx/SPATIAL_HASH_CELL_SIZE-1; xix <= endx/SPATIAL_HASH_CELL_SIZE+1; ++xix) {
                             for(int yix = starty/SPATIAL_HASH_CELL_SIZE-1; yix <= endy/SPATIAL_HASH_CELL_SIZE+1; ++yix) {
-                                set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
+                                if (!g_spatial_hash.count(make_pair(xix, yix))) { continue; }
+                                unordered_set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
                                 vector<int> to_erase;
                                 for(int cix: bucket) {
                                     Circle &c = g_circles[cix];
