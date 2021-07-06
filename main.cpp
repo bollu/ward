@@ -85,13 +85,14 @@ static const vector<Color> g_colorwheel = {
     Color::RGB(0, 0, 0), Color::RGB(255, 0, 0), Color::RGB(0, 255, 0),
     Color::RGB(0, 0, 255)};
 
+static const int PALETTE_WIDTN = SCREEN_WIDTH / g_colorwheel.size();
+static const int PALETTE_HEIGHT = 40.0;
+
 struct ColorState {
-    bool colorpicking = false;
     int startpickx;
     int startpicky;
-    int color_wheel_ix = 0; // black
+    int colorix = 0;  // black
 } g_colorstate;
-
 
 struct OverviewState {
     bool overviewing;
@@ -110,7 +111,7 @@ struct RenderState {
 std::vector<Circle> cs;
 
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
-          const int HEIGHT = SCREEN_HEIGHT) {
+                      const int HEIGHT = SCREEN_HEIGHT) {
     for (Circle c : cs) {
         SDL_Rect rect;
         rect.x = c.x - c.radius;
@@ -129,24 +130,19 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
 }
 
 void draw_color_wheel(SDL_Renderer *renderer) {
-        // for each color in the color wheel, assign location.
-        for (int i = 0; i < g_colorwheel.size(); ++i) {
-            const float theta_delta = 2.0 * M_PI / g_colorwheel.size();
-            float theta = theta_delta * i;
-            static const int WHEEL_RADIUS = 120;
+    // for each color in the color wheel, assign location.
+    for (int i = 0; i < g_colorwheel.size(); ++i) {
 
-            int cx = g_colorstate.startpickx + cos(theta) * WHEEL_RADIUS;
-            int cy = g_colorstate.startpicky + sin(theta) * WHEEL_RADIUS;
-            const int PALETTE_RADIUS = 60 + 60 * (g_colorstate.color_wheel_ix == i);
-            SDL_Rect rect;
-            rect.x = cx - PALETTE_RADIUS;
-            rect.y = cy - PALETTE_RADIUS;
-            rect.w = rect.h = 2 * PALETTE_RADIUS;
-            Color color = g_colorwheel[i];
-            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
-                                   SDL_ALPHA_OPAQUE);
-            SDL_RenderFillRect(renderer, &rect);
-        }
+        SDL_Rect rect;
+        rect.x = i * PALETTE_WIDTN;
+        rect.y = SCREEN_HEIGHT - PALETTE_HEIGHT;
+        rect.w = PALETTE_WIDTN;
+        rect.h = PALETTE_HEIGHT;
+        Color color = g_colorwheel[i];
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
+                               SDL_ALPHA_OPAQUE);
+        SDL_RenderFillRect(renderer, &rect);
+    }
 }
 
 double lerp(double t, int x0, int x1) {
@@ -233,65 +229,6 @@ int main() {
 
                     static const float PAN_FACTOR = 5;
                     if (g_overviewstate.overviewing) {
-                        if (g_colorstate.colorpicking) {
-                            // cur - start = delta
-                            // => start + delta = cur
-
-                            static const int WHEEL_FACTOR = 3;
-                            int dx = WHEEL_FACTOR * (g_penstate.x - g_colorstate.startpickx);
-                            int dy = WHEEL_FACTOR * (g_penstate.y - g_colorstate.startpicky);
-
-                            float theta = 0;
-
-                            // when we draw, we draw it as
-                            // (x + cos(theta), y + sin(theta))), but our
-                            // coord system is positive in the
-                            // +>
-                            // v
-                            // direction. So:
-                            // down right -> angle in [0, pi/2]
-                            //
-                            if (dx >= 0) {
-                                // right
-                                if (dy >= 0) {
-                                    std::cerr << "DOWN-RIGHT\n";
-                                    // down
-                                    // +>
-                                    // v
-                                    theta = atan2(abs(dy), abs(dx));
-                                } else {
-                                    std::cerr << "UP-RIGHT\n";
-                                    // up
-                                    // ^
-                                    // +>
-                                    theta = 3*M_PI + atan2(abs(dy), abs(dx));
-                                }
-                            } else {
-                                //left (<)
-
-                                if (dy >= 0) {
-                                    std::cerr << "DOWN-LEFT\n";
-                                    // down
-                                    // <+
-                                    //  v
-                                    theta = M_PI/2 + atan2(abs(dy), abs(dx));
-                                } else {
-                                    // up
-                                    //  ^ 
-                                    // <+
-                                    std::cerr << "UP-LEFT\n";
-                                    theta = M_PI  + atan2(abs(dy), abs(dx));
-                                }
-                            }
-
-                            g_colorstate.color_wheel_ix = (theta * g_colorwheel.size()) / (2 * M_PI);
-                            g_colorstate.color_wheel_ix = min<int>(g_colorstate.color_wheel_ix, g_colorwheel.size()-1);
-                            g_colorstate.color_wheel_ix = max<int>(0, g_colorstate.color_wheel_ix);
-                            assert(g_colorstate.color_wheel_ix >= 0);
-                            assert(g_colorstate.color_wheel_ix < g_colorwheel.size());
-                            // this is in charge of all events. skip.
-                            continue;
-                        }
                         // if tapped, move to tap location
                         if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
                             g_renderstate.panx =
@@ -341,7 +278,7 @@ int main() {
                                        g_renderstate.pany + g_penstate.y);
                             c.radius = EasyTab->Pressure[0] *
                                        EasyTab->Pressure[0] * 30;
-                            c.color = g_colorwheel[g_colorstate.color_wheel_ix];
+                            c.color = g_colorwheel[g_colorstate.colorix];
                             cs.push_back(c);
                         }
 
@@ -351,6 +288,16 @@ int main() {
 
                     if (!(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
                         g_curvestate.initialized = false;
+                    }
+
+                    if (g_penstate.y >= SCREEN_HEIGHT - PALETTE_HEIGHT) {
+                        std::cerr << "COLOR PICKING\n";
+                        // cur - start = delta
+                        // => start + delta = cur
+                        g_colorstate.colorix = g_penstate.x / PALETTE_WIDTN;
+                        assert(g_colorstate.colorix >= 0);
+                        assert(g_colorstate.colorix < g_colorwheel.size());
+                        continue;
                     }
                 }
             } else if (event.type == SDL_KEYDOWN) {
@@ -391,12 +338,6 @@ int main() {
                             g_panstate.starty = g_penstate.y;
                             break;
                         }
-
-                        if (g_overviewstate.overviewing) {
-                            g_colorstate.colorpicking = true;
-                            g_colorstate.startpickx = g_penstate.x;
-                            g_colorstate.startpicky = g_penstate.y;
-                        }
                         break;
                     default:
                         button_name = "unk";
@@ -417,11 +358,6 @@ int main() {
                         button_name = "middle";
                         if (!g_overviewstate.overviewing) {
                             g_panstate.panning = false;
-                            break;
-                        }
-
-                        if (g_overviewstate.overviewing) {
-                            g_colorstate.colorpicking = false;
                             break;
                         }
                         break;
@@ -448,7 +384,7 @@ int main() {
         }
         SDL_RenderClear(renderer);
         draw_pen_strokes(renderer);
-        if (g_colorstate.colorpicking) {
+        if (!g_panstate.panning && !g_overviewstate.overviewing) {
             draw_color_wheel(renderer);
         }
 
