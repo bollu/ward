@@ -28,16 +28,16 @@ struct Color {
 };
 
 static const Color g_draw_background_color = Color::RGB(0xEE, 0xEE, 0xEE);
-static const Color g_overview_background_color = Color::RGB(207, 216, 220);
+static const Color g_overview_background_color = Color::RGB(0xEE, 0xEE, 0xEE);
 
 // color palette
 static const vector<Color> g_palette = {
-    Color::RGB(0, 0, 0), // black
-    Color::RGB(158, 158, 158), // gray
-    Color::RGB(233, 30, 99), // R
-    Color::RGB(76, 175, 80), // G
-    Color::RGB(33, 150, 243), // B
-    Color::RGB(255, 160, 0) // gold
+    Color::RGB(0, 0, 0),        // black
+    Color::RGB(158, 158, 158),  // gray
+    Color::RGB(233, 30, 99),    // R
+    Color::RGB(76, 175, 80),    // G
+    Color::RGB(33, 150, 243),   // B
+    Color::RGB(255, 160, 0)     // gold
 };
 
 // leave gap in beginning for eraser.
@@ -54,13 +54,6 @@ static const int PALETTE_HEIGHT = SCREEN_HEIGHT / 20;
 // pen lower button: middle
 // pen upper button: right
 
-void set_pixel(SDL_Surface *surface, int x, int y, Uint32 pixel) {
-    Uint32 *const target_pixel =
-        (Uint32 *)((Uint8 *)surface->pixels + y * surface->pitch +
-                   x * surface->format->BytesPerPixel);
-    *target_pixel = pixel;
-}
-
 // TODO: refactor with vec..
 struct Vec {
     int x;
@@ -73,7 +66,8 @@ struct Circle {
     bool erased;
     Color color;
 
-    Circle(int x, int y, int radius, Color color) : x(x), y(y), radius(radius), color(color), erased(false) {}
+    Circle(int x, int y, int radius, Color color)
+        : x(x), y(y), radius(radius), color(color), erased(false) {}
 };
 
 struct CurveState {
@@ -105,10 +99,9 @@ struct PanState {
 struct ColorState {
     int startpickx;
     int startpicky;
-    int colorix = 0;  
+    int colorix = 0;
     bool erasing;
 } g_colorstate;
-
 
 struct OverviewState {
     bool overviewing;
@@ -129,7 +122,9 @@ std::vector<Circle> g_circles;
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
                       const int HEIGHT = SCREEN_HEIGHT) {
     for (const Circle &c : g_circles) {
-        if (c.erased) { continue; }
+        if (c.erased) {
+            continue;
+        }
         SDL_Rect rect;
         rect.x = c.x - c.radius;
         rect.y = c.y - c.radius;
@@ -147,14 +142,33 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
 }
 
 void draw_palette(SDL_Renderer *renderer) {
+    // selected palette is drawn slightly higher.
+    int SELECTED_PALETTE_HEIGHT = PALETTE_HEIGHT * 1.3;
+    // draw eraser.
+    {
+        SDL_Rect rect;
+        // leave gap at beginnning for eraser.
+        rect.x = 0 * PALETTE_WIDTN;
+        rect.w = PALETTE_WIDTN;
+
+        rect.h =
+            (g_colorstate.erasing ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT);
+        rect.y = SCREEN_HEIGHT - rect.h;
+        Color color = Color::RGB(255, 255, 255);  // eraser indicated by white.
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
+                               SDL_ALPHA_OPAQUE);
+        SDL_RenderFillRect(renderer, &rect);
+    }
     // for each color in the color wheel, assign location.
     for (int i = 0; i < g_palette.size(); ++i) {
         SDL_Rect rect;
         // leave gap at beginnning for eraser.
         rect.x = (1 + i) * PALETTE_WIDTN;
-        rect.y = SCREEN_HEIGHT - PALETTE_HEIGHT;
         rect.w = PALETTE_WIDTN;
-        rect.h = PALETTE_HEIGHT;
+        bool selected = !g_colorstate.erasing && (g_colorstate.colorix == i);
+        rect.h = selected ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT;
+        rect.y = SCREEN_HEIGHT - rect.h;
+
         Color color = g_palette[i];
         SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
                                SDL_ALPHA_OPAQUE);
@@ -169,20 +183,25 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
-static const int GC_NUM_ERASED_THRESHOLD = 1000;
+static const int GC_NUM_ERASED_THRESHOLD = 10;
 int g_num_erased = 0;
 void garbage_collect() {
-    std::cerr << "GCING";
+    std::cerr << "- GCING\n";
+    const int start_size = g_circles.size();
     vector<Circle> newcs;
-    newcs.reserve(g_circles.size());
+    newcs.reserve(start_size);
 
-    for(const Circle &c : g_circles) {
-        if (!c.erased) { newcs.push_back(c); }
-        else { g_num_erased--; }
+    for (const Circle &c : g_circles) {
+        if (!c.erased) {
+            newcs.push_back(c);
+        } else {
+            g_num_erased--;
+        }
     }
     assert(g_num_erased == 0);
     g_circles.swap(newcs);
-
+    const int end_size = g_circles.size();
+    assert(end_size < start_size);
 }
 
 // https://stackoverflow.com/a/3069122/5305365
@@ -191,7 +210,7 @@ void garbage_collect() {
 // SDL2-cairo: https://github.com/tsuu32/sdl2-cairo-example
 int main() {
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-        cout << "Failed to initialise SDL\n";
+        cerr << "Failed to initialise SDL\n";
         return -1;
     }
 
@@ -238,27 +257,34 @@ int main() {
             else if (event.type == SDL_SYSWMEVENT) {
                 EasyTabResult res =
                     EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
+                if (res != EASYTAB_OK) { continue; }
+                assert(res == EASYTAB_OK);
 
-                if (res == EASYTAB_OK) {
-                    std::cout
-                        << "npackets: " << EasyTab->NumPackets
-                        << " | posX: " << EasyTab->PosX[0]
-                        << " | posY: " << EasyTab->PosY[0]
-                        << " | pressure: " << EasyTab->Pressure[0]
-                        << " | touch "
-                        << (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)
-                        << " | presslo "
-                        << (EasyTab->Buttons & EasyTab_Buttons_Pen_Lower)
-                        << " | presshi "
-                        << (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper)
-                        << " | altitide: " << EasyTab->Orientation.Altitude
-                        << "\n";
+                // std::cerr
+                //     << "npackets: " << EasyTab->NumPackets
+                //     << " | posX: " << EasyTab->PosX[0]
+                //     << " | posY: " << EasyTab->PosY[0]
+                //     << " | pressure: " << EasyTab->Pressure[0]
+                //     << " | touch "
+                //     << (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)
+                //     << " | presslo "
+                //     << (EasyTab->Buttons & EasyTab_Buttons_Pen_Lower)
+                //     << " | presshi "
+                //     << (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper)
+                //     << " | altitide: " << EasyTab->Orientation.Altitude
+                //     << "\n";
 
-                    // TODO: draw a line from old position to current position
-                    // and fill with circles.
+                // TODO: draw a line from old position to current position
+                // and fill with circles.
 
-                    g_penstate.x = EasyTab->PosX[0];
-                    g_penstate.y = EasyTab->PosY[0];
+                if (EasyTab->NumPackets > 1) {
+                    std::cerr << "- NumPackets: " << EasyTab->NumPackets << "\n";
+                }
+
+                for (int p = 0; p < EasyTab->NumPackets; ++p) {
+                    g_penstate.x = EasyTab->PosX[p];
+                    g_penstate.y = EasyTab->PosY[p];
+                    const int pressure = EasyTab->Pressure[p];
 
                     static const float PAN_FACTOR = 5;
                     if (g_overviewstate.overviewing) {
@@ -287,7 +313,8 @@ int main() {
                     }
 
                     // pressing down, not with eraser.
-                    if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) && !g_colorstate.erasing) {
+                    if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) &&
+                        !g_colorstate.erasing) {
                         if (!g_curvestate.initialized) {
                             g_curvestate.startx = g_curvestate.prevx =
                                 g_penstate.x + g_renderstate.panx;
@@ -301,16 +328,16 @@ int main() {
 
                         const int NUM_INTERPOLANTS = 3;
                         for (int i = 0; i <= NUM_INTERPOLANTS; i++) {
-                            cout << "i: " << i << " | dlsq: " << dlsq
-                                 << "###\n";
+                            // std::cerr << "i: " << i << " | dlsq: " << dlsq <<
+                            // "###\n";
                             int x = lerp(float(i) / NUM_INTERPOLANTS,
-                                       g_curvestate.prevx,
-                                       g_renderstate.panx + g_penstate.x);
+                                         g_curvestate.prevx,
+                                         g_renderstate.panx + g_penstate.x);
                             int y = lerp(float(i) / NUM_INTERPOLANTS,
-                                       g_curvestate.prevy,
-                                       g_renderstate.pany + g_penstate.y);
-                            int radius = EasyTab->Pressure[0] *
-                                       EasyTab->Pressure[0] * 30;
+                                         g_curvestate.prevy,
+                                         g_renderstate.pany + g_penstate.y);
+                            int radius = EasyTab->Pressure[p] *
+                                         EasyTab->Pressure[p] * 30;
                             Color color = g_palette[g_colorstate.colorix];
                             g_circles.push_back(Circle(x, y, radius, color));
                         }
@@ -326,41 +353,47 @@ int main() {
 
                     // choosing a color.
                     if (g_penstate.y >= SCREEN_HEIGHT - PALETTE_HEIGHT) {
-                        std::cerr << "COLOR PICKING\n";
-                        // cur - start = delta
-                        // => start + delta = cur
+                        // std::cerr << "COLOR PICKING\n";
                         int ix = g_penstate.x / PALETTE_WIDTN;
                         if (ix == 0) {
-                            g_colorstate.erasing = true; 
+                            g_colorstate.erasing = true;
                         } else {
                             g_colorstate.erasing = false;
-                            g_colorstate.colorix = ix-1;
+                            g_colorstate.colorix = ix - 1;
                         }
                         assert(g_colorstate.colorix >= 0);
                         assert(g_colorstate.colorix < g_palette.size());
                         continue;
                     }
 
-                    // hovering, since we got an event or pressing down, while erasing.
+                    // hovering, since we got an event or pressing down, while
+                    // erasing.
                     if (g_colorstate.erasing) {
                         vector<int> tokill;
-                        const int ERASER_RADIUS = 40 + (EasyTab->Pressure[0] * 50);
-                        std::cerr << "ERASING (radius=" << ERASER_RADIUS << ")\n";
+                        const int ERASER_RADIUS =
+                            40 + (EasyTab->Pressure[p] * 100);
+                        // std::cerr << "ERASING (radius=" << ERASER_RADIUS <<
+                        // ")\n";
                         for (auto &c : g_circles) {
-                            if (c.erased) { continue; }
-                            const int dx = g_renderstate.panx + g_penstate.x - c.x;
-                            const int dy = g_renderstate.pany + g_penstate.y - c.y;
-                            // eraser has some radius without pressing. With pressing, becomes bigger.
-                            if (dx*dx + dy*dy < ERASER_RADIUS*ERASER_RADIUS) {
-                                cout << "\terased: " << c.x << " " << c.y << "\n";
+                            if (c.erased) {
+                                continue;
+                            }
+                            const int dx =
+                                g_renderstate.panx + g_penstate.x - c.x;
+                            const int dy =
+                                g_renderstate.pany + g_penstate.y - c.y;
+                            // eraser has some radius without pressing. With
+                            // pressing, becomes bigger.
+                            if (dx * dx + dy * dy <=
+                                ERASER_RADIUS * ERASER_RADIUS) {
                                 c.erased = true;
                                 g_num_erased++;
                             }
-                        }
-                    }
-                }
+                        }  // end loop over circles
+                    }      // end if(erasing )
+                }          // end loop over packets
             } else if (event.type == SDL_KEYDOWN) {
-                cout << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
+                cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
                      << "\n";
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
                 string button_name = "unk";
@@ -402,7 +435,7 @@ int main() {
                         button_name = "unk";
                         break;
                 }
-                cout << "mousedown: |" << button_name << "\n";
+                cerr << "mousedown: |" << button_name << "\n";
             }
 
             else if (event.type == SDL_MOUSEBUTTONUP) {
@@ -424,7 +457,7 @@ int main() {
                         button_name = "unk";
                         break;
                 }
-                cout << "mousedown: |" << button_name << "\n";
+                cerr << "mousedown: |" << button_name << "\n";
             }
         }
 
@@ -452,11 +485,8 @@ int main() {
 
         if (g_num_erased >= GC_NUM_ERASED_THRESHOLD) {
             garbage_collect();
-        } else {
-            cout << "#circles: " << g_circles.size() << "\n";
         }
     }
-
 
     // Tidy up
     EasyTab_Unload(sysinfo.info.x11.display);
