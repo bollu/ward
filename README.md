@@ -1,7 +1,6 @@
 # ward: ward 'aint ready for drawing
 
-![](./static/ward-drawing.png | width=256)
-![](./static/ward-overview.png | width=256)
+<img src="https://github.com/bollu/ward/raw/master/static/ward-drawing.png" alt="alt text" width="whatever" height="256">
 
 
 
