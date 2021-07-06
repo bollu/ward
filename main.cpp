@@ -5,12 +5,12 @@
 #include <X11/Xlib.h>  // Every Xlib program must include this
 #include <X11/extensions/XInput.h>
 
-#include <vector>
 #include <map>
-#include <set>
 #include <optional>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "assert.h"
 #include "easytab.h"
@@ -66,7 +66,7 @@ struct Vec {
 };
 
 using ll = long long;
-static ll max_circle_guid = 0;
+static ll g_max_circle_guid = 0;
 
 using ll = long long;
 struct Circle {
@@ -77,11 +77,8 @@ struct Circle {
     Color color;
 
     Circle(int x, int y, int radius, Color color, ll guid)
-        : x(x), y(y), radius(radius), color(color), erased(false), guid(guid) {
-        }
+        : x(x), y(y), radius(radius), color(color), erased(false), guid(guid) {}
 };
-
-
 
 struct CurveState {
     int startx;
@@ -132,20 +129,19 @@ struct RenderState {
 
 std::vector<Circle> g_circles;
 
-
 // dubious has concatenation from stack overflow:
 // https://stackoverflow.com/a/54945214/5305365
 struct hash_pair_int {
-    size_t operator ()(const pair<int, int>& pi) const{
+    size_t operator()(const pair<int, int> &pi) const {
         return std::hash<int>()(pi.first) * 31 + std::hash<int>()(pi.second);
     };
 };
 
-
 static const int SPATIAL_HASH_CELL_SIZE = 300;
 unordered_map<pair<int, int>, unordered_set<int>, hash_pair_int> g_spatial_hash;
 
-void add_circle_to_spatial_hash(const Circle &c) {
+// returns if circle was really added.
+bool add_circle_to_spatial_hash(const Circle &c) {
     int sx = c.x / SPATIAL_HASH_CELL_SIZE;
     int sy = c.y / SPATIAL_HASH_CELL_SIZE;
     // TODO: treat circles as rects, not points.
@@ -156,16 +152,17 @@ void add_circle_to_spatial_hash(const Circle &c) {
         const Circle &d = g_circles[ix];
         int dx = c.x - d.x;
         int dy = c.y - d.y;
-        int dlsq = dx*dx + dy*dy;
-        if (sqrt(dlsq) + c.radius < d.radius) { return; }
-
+        int dlsq = dx * dx + dy * dy;
+        if (sqrt(dlsq) + c.radius < d.radius) {
+            return false;
+        }
     }
     bucket.insert(c.guid);
+    return true; 
 }
 
-
 void run_command(vector<int> &cmd) {
-    for(const int cix : cmd) {
+    for (const int cix : cmd) {
         const Circle &c = g_circles[cix];
         const int sx = c.x / SPATIAL_HASH_CELL_SIZE;
         const int sy = c.y / SPATIAL_HASH_CELL_SIZE;
@@ -173,7 +170,7 @@ void run_command(vector<int> &cmd) {
         if (bucket.count(cix)) {
             bucket.erase(cix);
         } else {
-            bucket.insert(cix); 
+            bucket.insert(cix);
         }
     }
 };
@@ -185,7 +182,9 @@ struct Commander {
 
     void undo() {
         std::cerr << "trying to undo...\n";
-        if (runtill < 0) { return; }
+        if (runtill < 0) {
+            return;
+        }
         std::cerr << "\tundoing\n";
         assert(runtill < cmds.size());
         run_command(cmds[runtill]);
@@ -195,18 +194,20 @@ struct Commander {
 
     void redo() {
         // nothing to redo.
-        if (runtill == cmds.size() - 1) { return; }
+        if (runtill == cmds.size() - 1) {
+            return;
+        }
         std::cerr << "redoing command!\n";
-        run_command(cmds[runtill+1]);
+        run_command(cmds[runtill + 1]);
         runtill++;
     }
 
     void start_new_command() {
         // if we have more commands, drop extra commands.
-        if (this->runtill != cmds.size() - 1){
+        if (this->runtill != cmds.size() - 1) {
             // keep [0, ..., undoix]
             // eg. undoix=0 => resize[0..0]
-            cmds.resize(this->runtill+1);
+            cmds.resize(this->runtill + 1);
         }
 
         assert(this->runtill == this->cmds.size() - 1);
@@ -220,27 +221,30 @@ struct Commander {
         this->cmds[this->runtill].push_back(c.guid);
     }
 
-
 } g_commander;
-
 
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
                       const int HEIGHT = SCREEN_HEIGHT) {
-
     const float zoominv = (1.0 / g_renderstate.zoom);
     const int startx = zoominv * g_renderstate.panx;
     const int starty = zoominv * g_renderstate.pany;
-    const int endx =  zoominv * (startx + SCREEN_WIDTH);
+    const int endx = zoominv * (startx + SCREEN_WIDTH);
     const int endy = zoominv * (starty + SCREEN_HEIGHT);
 
-    for(int xix = startx/SPATIAL_HASH_CELL_SIZE-1; xix <= endx/SPATIAL_HASH_CELL_SIZE; ++xix) {
-        for(int yix = starty/SPATIAL_HASH_CELL_SIZE-1; yix < endy; ++yix) {
-            if (!g_spatial_hash.count(make_pair(xix, yix))) { continue; }
+    for (int xix = startx / SPATIAL_HASH_CELL_SIZE - 1;
+         xix <= endx / SPATIAL_HASH_CELL_SIZE; ++xix) {
+        for (int yix = starty / SPATIAL_HASH_CELL_SIZE - 1; yix < endy; ++yix) {
+            if (!g_spatial_hash.count(make_pair(xix, yix))) {
+                continue;
+            }
 
-            for (int cix: g_spatial_hash[make_pair(xix, yix)]) {
+            for (int cix : g_spatial_hash[make_pair(xix, yix)]) {
                 const Circle &c = g_circles[cix];
-                if (c.erased) { continue; }
-                // cout << "\t- circle(x=" << c.x << " y=" << c.y << " rad=" << c.radius << ")\n";
+                if (c.erased) {
+                    continue;
+                }
+                // cout << "\t- circle(x=" << c.x << " y=" << c.y << " rad=" <<
+                // c.radius << ")\n";
                 SDL_Rect rect;
                 rect.x = c.x - c.radius;
                 rect.y = c.y - c.radius;
@@ -251,8 +255,8 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
                 rect.y *= g_renderstate.zoom;
                 rect.w *= g_renderstate.zoom;
                 rect.h *= g_renderstate.zoom;
-                SDL_SetRenderDrawColor(renderer, c.color.r, c.color.g, c.color.b,
-                        SDL_ALPHA_OPAQUE);
+                SDL_SetRenderDrawColor(renderer, c.color.r, c.color.g,
+                                       c.color.b, SDL_ALPHA_OPAQUE);
                 SDL_RenderFillRect(renderer, &rect);
             }
         }
@@ -290,8 +294,8 @@ void draw_palette(SDL_Renderer *renderer) {
         rect.x = 0 * PALETTE_WIDTN;
         rect.w = PALETTE_WIDTN;
 
-        rect.h =
-            (g_colorstate.is_erasing ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT);
+        rect.h = (g_colorstate.is_erasing ? SELECTED_PALETTE_HEIGHT
+                                          : PALETTE_HEIGHT);
         rect.y = SCREEN_HEIGHT - rect.h;
         Color color = Color::RGB(255, 255, 255);  // eraser indicated by white.
         SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
@@ -321,7 +325,6 @@ double lerp(double t, int x0, int x1) {
     assert(t <= 1);
     return x1 * t + x0 * (1 - t);
 }
-
 
 // https://stackoverflow.com/a/3069122/5305365
 // Approximate General Sweep Boundary of a 2D Curved Object,
@@ -376,7 +379,9 @@ int main() {
             else if (event.type == SDL_SYSWMEVENT) {
                 EasyTabResult res =
                     EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
-                if (res != EASYTAB_OK) { continue; }
+                if (res != EASYTAB_OK) {
+                    continue;
+                }
                 assert(res == EASYTAB_OK);
 
                 // std::cerr
@@ -397,7 +402,8 @@ int main() {
                 // and fill with circles.
 
                 if (EasyTab->NumPackets > 1) {
-                    std::cerr << "- NumPackets: " << EasyTab->NumPackets << "\n";
+                    std::cerr << "- NumPackets: " << EasyTab->NumPackets
+                              << "\n";
                 }
 
                 for (int p = 0; p < EasyTab->NumPackets; ++p) {
@@ -405,7 +411,7 @@ int main() {
                     g_penstate.y = EasyTab->PosY[p];
                     const int pressure = EasyTab->Pressure[p];
 
-                    static const float PAN_FACTOR = 5;
+                    static const float PAN_FACTOR = 3;
                     if (g_overviewstate.overviewing) {
                         // if tapped, move to tap location
                         if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
@@ -429,6 +435,14 @@ int main() {
                         g_renderstate.pany =
                             g_panstate.startpany +
                             PAN_FACTOR * (g_panstate.starty - g_penstate.y);
+                        continue;
+                    }
+
+                    // not is_drawing / hovering
+                    if (g_curvestate.is_drawing &&
+                        !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                        g_curvestate.is_drawing = false;
+                        continue;
                     }
 
                     // pressing down, not with eraser.
@@ -439,45 +453,51 @@ int main() {
                                 g_penstate.x + g_renderstate.panx;
                             g_curvestate.starty = g_curvestate.prevy =
                                 g_penstate.y + g_renderstate.pany;
-                            g_commander.start_new_command();
                             g_curvestate.is_drawing = true;
+                            g_commander.start_new_command();
                         }
 
                         const int dx = abs(g_penstate.x - g_curvestate.prevx);
                         const int dy = abs(g_penstate.y - g_curvestate.prevy);
 
-                        const int radius = EasyTab->Pressure[p] *
-                            EasyTab->Pressure[p] * 30;
+                        const int radius =
+                            EasyTab->Pressure[p] * EasyTab->Pressure[p] * 30;
                         int dlsq = dx * dx + dy * dy;
 
-                        // too close to matter.
-                        if (dlsq < radius*radius) { continue; }
+                        // too close to the previous position, don't create an interpolant.
+                        if (dlsq < radius * radius) {
+                            continue;
+                        }
 
-                        const int NUM_INTERPOLANTS = 3;
-                        for (int i = 0; i < NUM_INTERPOLANTS; i++) {
-                            int x = lerp(double(i) / NUM_INTERPOLANTS,
+                        const int NUM_INTERPOLANTS = 2;
+                        for (int k = 0; k <= NUM_INTERPOLANTS; k++) {
+                            int x = lerp(double(k) / NUM_INTERPOLANTS,
                                          g_curvestate.prevx,
                                          g_renderstate.panx + g_penstate.x);
-                            int y = lerp(double(i) / NUM_INTERPOLANTS,
+                            int y = lerp(double(k) / NUM_INTERPOLANTS,
                                          g_curvestate.prevy,
                                          g_renderstate.pany + g_penstate.y);
                             const Color color = g_palette[g_colorstate.colorix];
-                            assert(max_circle_guid < (1ll << 62) && "too many circles!");
+                            assert(g_max_circle_guid < (1ll << 62) &&
+                                   "too many circles!");
 
-                            const Circle circle = Circle(x, y, radius, color, max_circle_guid++);
+                            // need post ++ for guid, as we need firt guid to be zero
+                            // since we push it  back into a vector.
+                            const Circle circle =
+                                Circle(x, y, radius, color, g_max_circle_guid++);
+                            // add circle to the vector to keeps the GUIDs correct.
                             g_circles.push_back(circle);
-                            add_circle_to_spatial_hash(circle);
-                            g_commander.add_to_command(circle);
+
+                            // if we don't need this circle, continue, don't add
+                            // it to the command. Such a circle is the price we pay...
+                            // TODO: create code that cleans up such unreferenced circles!
+                            if(add_circle_to_spatial_hash(circle)) {
+                                g_commander.add_to_command(circle);
+                            }
                         }
 
                         g_curvestate.prevx = g_renderstate.panx + g_penstate.x;
                         g_curvestate.prevy = g_renderstate.pany + g_penstate.y;
-                        continue;
-                    }
-
-                    // not is_drawing / hovering
-                    if (g_curvestate.is_drawing && !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
-                        g_curvestate.is_drawing = false;
                         continue;
                     }
 
@@ -486,7 +506,9 @@ int main() {
                         // std::cerr << "COLOR PICKING\n";
                         int ix = g_penstate.x / PALETTE_WIDTN;
                         if (ix == 0) {
-                            if (!g_colorstate.is_erasing) { g_commander.start_new_command(); }
+                            if (!g_colorstate.is_erasing) {
+                                g_commander.start_new_command();
+                            }
                             g_colorstate.is_erasing = true;
                         } else {
                             g_colorstate.is_erasing = false;
@@ -502,39 +524,53 @@ int main() {
                     if (g_colorstate.is_erasing) {
                         const int ERASER_RADIUS =
                             40 + (EasyTab->Pressure[p] * 100);
-                        // std::cerr << "is_erasing (radius=" << ERASER_RADIUS <<
+                        // std::cerr << "is_erasing (radius=" << ERASER_RADIUS
+                        // <<
                         // ")\n";
 
-                        const int startx = g_renderstate.panx + g_penstate.x - ERASER_RADIUS;
-                        const int starty = g_renderstate.pany + g_penstate.y - ERASER_RADIUS;
-                        const int endx = startx + 2*ERASER_RADIUS;
-                        const int endy = starty + 2*ERASER_RADIUS;
+                        const int startx =
+                            g_renderstate.panx + g_penstate.x - ERASER_RADIUS;
+                        const int starty =
+                            g_renderstate.pany + g_penstate.y - ERASER_RADIUS;
+                        const int endx = startx + 2 * ERASER_RADIUS;
+                        const int endy = starty + 2 * ERASER_RADIUS;
 
-                        for(int xix = startx/SPATIAL_HASH_CELL_SIZE-1; xix <= endx/SPATIAL_HASH_CELL_SIZE+1; ++xix) {
-                            for(int yix = starty/SPATIAL_HASH_CELL_SIZE-1; yix <= endy/SPATIAL_HASH_CELL_SIZE+1; ++yix) {
-                                if (!g_spatial_hash.count(make_pair(xix, yix))) { continue; }
-                                unordered_set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
+                        for (int xix = startx / SPATIAL_HASH_CELL_SIZE - 1;
+                             xix <= endx / SPATIAL_HASH_CELL_SIZE + 1; ++xix) {
+                            for (int yix = starty / SPATIAL_HASH_CELL_SIZE - 1;
+                                 yix <= endy / SPATIAL_HASH_CELL_SIZE + 1;
+                                 ++yix) {
+                                if (!g_spatial_hash.count(
+                                        make_pair(xix, yix))) {
+                                    continue;
+                                }
+                                unordered_set<int> &bucket =
+                                    g_spatial_hash[make_pair(xix, yix)];
                                 vector<int> to_erase;
-                                for(int cix: bucket) {
+                                for (int cix : bucket) {
                                     Circle &c = g_circles[cix];
-                                    if (c.erased) { continue; }
+                                    if (c.erased) {
+                                        continue;
+                                    }
                                     const int dx =
                                         g_renderstate.panx + g_penstate.x - c.x;
                                     const int dy =
                                         g_renderstate.pany + g_penstate.y - c.y;
-                                    // eraser has some radius without pressing. With
-                                    // pressing, becomes bigger.
+                                    // eraser has some radius without pressing.
+                                    // With pressing, becomes bigger.
                                     if (dx * dx + dy * dy <=
-                                            ERASER_RADIUS * ERASER_RADIUS) {
+                                        ERASER_RADIUS * ERASER_RADIUS) {
                                         to_erase.push_back(cix);
                                         g_commander.add_to_command(c);
                                     }
                                 }
-                                for(int cix : to_erase) { bucket.erase(cix); }
+                                for (int cix : to_erase) {
+                                    bucket.erase(cix);
+                                }
                             }
                         }
-                    }      // end if(is_erasing )
-                }          // end loop over packets
+                    }  // end if(is_erasing )
+                }      // end loop over packets
             } else if (event.type == SDL_KEYDOWN) {
                 cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
                      << "\n";
