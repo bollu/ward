@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -81,14 +82,15 @@ struct Circle {
 };
 
 
+
 struct CurveState {
     int startx;
     int starty;
     int prevx;
     int prevy;
-    bool initialized;
+    bool is_drawing;
     CurveState()
-        : startx(0), starty(0), prevx(0), prevy(0), initialized(false){};
+        : startx(0), starty(0), prevx(0), prevy(0), is_drawing(false){};
 } g_curvestate;
 
 struct PenState {
@@ -111,7 +113,7 @@ struct ColorState {
     int startpickx;
     int startpicky;
     int colorix = 0;
-    bool erasing;
+    bool is_erasing;
 } g_colorstate;
 
 struct OverviewState {
@@ -161,6 +163,65 @@ void add_circle_to_spatial_hash(const Circle &c) {
     bucket.insert(c.guid);
 }
 
+
+void run_command(vector<int> &cmd) {
+    for(const int cix : cmd) {
+        const Circle &c = g_circles[cix];
+        const int sx = c.x / SPATIAL_HASH_CELL_SIZE;
+        const int sy = c.y / SPATIAL_HASH_CELL_SIZE;
+        std::unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
+        if (bucket.count(cix)) {
+            bucket.erase(cix);
+        } else {
+            bucket.insert(cix); 
+        }
+    }
+};
+
+struct Commander {
+    vector<vector<int>> cmds;
+    // have run commands till index
+    int runtill = -1;
+
+    void undo() {
+        std::cerr << "trying to undo...\n";
+        if (runtill < 0) { return; }
+        std::cerr << "\tundoing\n";
+        assert(runtill < cmds.size());
+        run_command(cmds[runtill]);
+        runtill--;
+        assert(runtill >= -1);
+    }
+
+    void redo() {
+        // nothing to redo.
+        if (runtill == cmds.size() - 1) { return; }
+        std::cerr << "redoing command!\n";
+        run_command(cmds[runtill+1]);
+        runtill++;
+    }
+
+    void push_command() {
+        // if we have more commands, drop extra commands.
+        if (this->runtill != cmds.size() - 1){
+            // keep [0, ..., undoix]
+            // eg. undoix=0 => resize[0..0]
+            cmds.resize(this->runtill+1);
+        }
+
+        assert(this->runtill == this->cmds.size() - 1);
+        this->cmds.push_back({});
+        this->runtill = this->cmds.size() - 1;
+    }
+
+    void add_to_command(const Circle &c) {
+        assert(this->runtill == this->cmds.size() - 1);
+        assert(this->cmds.size() >= 0);
+        this->cmds[this->runtill].push_back(c.guid);
+    }
+
+
+} g_commander;
 
 
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
@@ -230,7 +291,7 @@ void draw_palette(SDL_Renderer *renderer) {
         rect.w = PALETTE_WIDTN;
 
         rect.h =
-            (g_colorstate.erasing ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT);
+            (g_colorstate.is_erasing ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT);
         rect.y = SCREEN_HEIGHT - rect.h;
         Color color = Color::RGB(255, 255, 255);  // eraser indicated by white.
         SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
@@ -243,7 +304,7 @@ void draw_palette(SDL_Renderer *renderer) {
         // leave gap at beginnning for eraser.
         rect.x = (1 + i) * PALETTE_WIDTN;
         rect.w = PALETTE_WIDTN;
-        bool selected = !g_colorstate.erasing && (g_colorstate.colorix == i);
+        bool selected = !g_colorstate.is_erasing && (g_colorstate.colorix == i);
         rect.h = selected ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT;
         rect.y = SCREEN_HEIGHT - rect.h;
 
@@ -261,27 +322,6 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
-static const int GC_NUM_ERASED_THRESHOLD = 10;
-int g_num_erased = 0;
-void garbage_collect() {
-    assert(false && "no longer used");
-    std::cerr << "- GCING\n";
-    const int start_size = g_circles.size();
-    vector<Circle> newcs;
-    newcs.reserve(start_size);
-
-    for (const Circle &c : g_circles) {
-        if (!c.erased) {
-            newcs.push_back(c);
-        } else {
-            g_num_erased--;
-        }
-    }
-    assert(g_num_erased == 0);
-    g_circles.swap(newcs);
-    const int end_size = g_circles.size();
-    assert(end_size < start_size);
-}
 
 // https://stackoverflow.com/a/3069122/5305365
 // Approximate General Sweep Boundary of a 2D Curved Object,
@@ -393,13 +433,14 @@ int main() {
 
                     // pressing down, not with eraser.
                     if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) &&
-                        !g_colorstate.erasing) {
-                        if (!g_curvestate.initialized) {
+                        !g_colorstate.is_erasing) {
+                        if (!g_curvestate.is_drawing) {
                             g_curvestate.startx = g_curvestate.prevx =
                                 g_penstate.x + g_renderstate.panx;
                             g_curvestate.starty = g_curvestate.prevy =
                                 g_penstate.y + g_renderstate.pany;
-                            g_curvestate.initialized = true;
+                            if (!g_curvestate.is_drawing) { g_commander.push_command(); }
+                            g_curvestate.is_drawing = true;
                         }
 
                         const int dx = abs(g_penstate.x - g_curvestate.prevx);
@@ -412,7 +453,7 @@ int main() {
                         // too close to matter.
                         if (dlsq < radius*radius) { continue; }
 
-                        const int NUM_INTERPOLANTS = 2;
+                        const int NUM_INTERPOLANTS = 3;
                         for (int i = 0; i <= NUM_INTERPOLANTS; i++) {
                             int x = lerp(double(i) / NUM_INTERPOLANTS,
                                          g_curvestate.prevx,
@@ -424,6 +465,7 @@ int main() {
                             assert(max_circle_guid < (1ll << 62) && "too many circles!");
 
                             const Circle circle = Circle(x, y, radius, color, max_circle_guid++);
+                            g_commander.add_to_command(circle);
                             g_circles.push_back(circle);
                             add_circle_to_spatial_hash(circle);
                         }
@@ -432,9 +474,9 @@ int main() {
                         g_curvestate.prevy = g_renderstate.pany + g_penstate.y;
                     }
 
-                    // not drawing / hovering
+                    // not is_drawing / hovering
                     if (!(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
-                        g_curvestate.initialized = false;
+                        g_curvestate.is_drawing = false;
                     }
 
                     // choosing a color.
@@ -442,9 +484,12 @@ int main() {
                         // std::cerr << "COLOR PICKING\n";
                         int ix = g_penstate.x / PALETTE_WIDTN;
                         if (ix == 0) {
-                            g_colorstate.erasing = true;
+                            if (!g_colorstate.is_erasing) { g_commander.push_command(); }
+                            g_colorstate.is_erasing = true;
                         } else {
-                            g_colorstate.erasing = false;
+                            if (g_colorstate.is_erasing) {
+                                g_colorstate.is_erasing = false;
+                            }
                             g_colorstate.colorix = ix - 1;
                         }
                         assert(g_colorstate.colorix >= 0);
@@ -453,11 +498,11 @@ int main() {
                     }
 
                     // hovering, since we got an event or pressing down, while
-                    // erasing.
-                    if (g_colorstate.erasing) {
+                    // is_erasing.
+                    if (g_colorstate.is_erasing) {
                         const int ERASER_RADIUS =
                             40 + (EasyTab->Pressure[p] * 100);
-                        // std::cerr << "ERASING (radius=" << ERASER_RADIUS <<
+                        // std::cerr << "is_erasing (radius=" << ERASER_RADIUS <<
                         // ")\n";
 
                         const int startx = g_renderstate.panx + g_penstate.x - ERASER_RADIUS;
@@ -482,34 +527,22 @@ int main() {
                                     if (dx * dx + dy * dy <=
                                             ERASER_RADIUS * ERASER_RADIUS) {
                                         to_erase.push_back(cix);
-                                        g_num_erased++;
+                                        g_commander.add_to_command(c);
                                     }
                                 }
                                 for(int cix : to_erase) { bucket.erase(cix); }
                             }
                         }
-
-                        // for (Circle &c : g_circles) {
-                        //     if (c.erased) {
-                        //         continue;
-                        //     }
-                        //     const int dx =
-                        //         g_renderstate.panx + g_penstate.x - c.x;
-                        //     const int dy =
-                        //         g_renderstate.pany + g_penstate.y - c.y;
-                        //     // eraser has some radius without pressing. With
-                        //     // pressing, becomes bigger.
-                        //     if (dx * dx + dy * dy <=
-                        //         ERASER_RADIUS * ERASER_RADIUS) {
-                        //         c.erased = true;
-                        //         g_num_erased++;
-                        //     }
-                        // }  // end loop over circles
-                    }      // end if(erasing )
+                    }      // end if(is_erasing )
                 }          // end loop over packets
             } else if (event.type == SDL_KEYDOWN) {
                 cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
                      << "\n";
+                if (event.key.keysym.sym == SDLK_q) {
+                    g_commander.undo();
+                } else if (event.key.keysym.sym == SDLK_w) {
+                    g_commander.redo();
+                }
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
                 string button_name = "unk";
                 switch (event.button.button) {
@@ -597,10 +630,6 @@ int main() {
             draw_palette(renderer);
         }
         SDL_RenderPresent(renderer);
-
-        if (g_num_erased >= GC_NUM_ERASED_THRESHOLD) {
-            // garbage_collect();
-        }
     }
 
     // Tidy up
