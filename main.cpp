@@ -155,13 +155,16 @@ void add_circle_to_spatial_hash(const Circle &c) {
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
                       const int HEIGHT = SCREEN_HEIGHT) {
 
-    const int startx = g_renderstate.panx;
-    const int starty = g_renderstate.pany;
-    const int endx = startx + SCREEN_WIDTH;
-    const int endy = starty + SCREEN_HEIGHT;
+    const float zoominv = (1.0 / g_renderstate.zoom);
+    const int startx = zoominv * g_renderstate.panx;
+    const int starty = zoominv * g_renderstate.pany;
+    const int endx =  zoominv * (startx + SCREEN_WIDTH);
+    const int endy = zoominv * (starty + SCREEN_HEIGHT);
 
     for(int xix = startx/SPATIAL_HASH_CELL_SIZE-1; xix <= endx/SPATIAL_HASH_CELL_SIZE; ++xix) {
         for(int yix = starty/SPATIAL_HASH_CELL_SIZE-1; yix < endy; ++yix) {
+            if (!g_spatial_hash.count(make_pair(xix, yix))) { continue; }
+
             for (int cix: g_spatial_hash[make_pair(xix, yix)]) {
                 const Circle &c = g_circles[cix];
                 if (c.erased) { continue; }
