@@ -201,7 +201,7 @@ struct Commander {
         runtill++;
     }
 
-    void push_command() {
+    void start_new_command() {
         // if we have more commands, drop extra commands.
         if (this->runtill != cmds.size() - 1){
             // keep [0, ..., undoix]
@@ -439,7 +439,7 @@ int main() {
                                 g_penstate.x + g_renderstate.panx;
                             g_curvestate.starty = g_curvestate.prevy =
                                 g_penstate.y + g_renderstate.pany;
-                            if (!g_curvestate.is_drawing) { g_commander.push_command(); }
+                            g_commander.start_new_command();
                             g_curvestate.is_drawing = true;
                         }
 
@@ -454,7 +454,7 @@ int main() {
                         if (dlsq < radius*radius) { continue; }
 
                         const int NUM_INTERPOLANTS = 3;
-                        for (int i = 0; i <= NUM_INTERPOLANTS; i++) {
+                        for (int i = 0; i < NUM_INTERPOLANTS; i++) {
                             int x = lerp(double(i) / NUM_INTERPOLANTS,
                                          g_curvestate.prevx,
                                          g_renderstate.panx + g_penstate.x);
@@ -465,18 +465,20 @@ int main() {
                             assert(max_circle_guid < (1ll << 62) && "too many circles!");
 
                             const Circle circle = Circle(x, y, radius, color, max_circle_guid++);
-                            g_commander.add_to_command(circle);
                             g_circles.push_back(circle);
                             add_circle_to_spatial_hash(circle);
+                            g_commander.add_to_command(circle);
                         }
 
                         g_curvestate.prevx = g_renderstate.panx + g_penstate.x;
                         g_curvestate.prevy = g_renderstate.pany + g_penstate.y;
+                        continue;
                     }
 
                     // not is_drawing / hovering
-                    if (!(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                    if (g_curvestate.is_drawing && !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
                         g_curvestate.is_drawing = false;
+                        continue;
                     }
 
                     // choosing a color.
@@ -484,12 +486,10 @@ int main() {
                         // std::cerr << "COLOR PICKING\n";
                         int ix = g_penstate.x / PALETTE_WIDTN;
                         if (ix == 0) {
-                            if (!g_colorstate.is_erasing) { g_commander.push_command(); }
+                            if (!g_colorstate.is_erasing) { g_commander.start_new_command(); }
                             g_colorstate.is_erasing = true;
                         } else {
-                            if (g_colorstate.is_erasing) {
-                                g_colorstate.is_erasing = false;
-                            }
+                            g_colorstate.is_erasing = false;
                             g_colorstate.colorix = ix - 1;
                         }
                         assert(g_colorstate.colorix >= 0);
