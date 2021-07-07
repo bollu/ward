@@ -325,10 +325,16 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
+SDL_Texture *g_view_texture;
+
+
 // https://stackoverflow.com/a/3069122/5305365
 // Approximate General Sweep Boundary of a 2D Curved Object,
 // dynadraw: http://www.graficaobscura.com/dyna/dynadraw.c
 // SDL2-cairo: https://github.com/tsuu32/sdl2-cairo-example
+// meditate on a stylus only UI for undo/redo.
+// add eraser radius.
+// add keyboard shortcut for eraser/palette toggle?
 int main() {
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         cerr << "Failed to initialise SDL\n";
@@ -464,7 +470,7 @@ int main() {
                         const int dy = abs(g_penstate.y - g_curvestate.prevy);
 
                         const int radius =
-                            EasyTab->Pressure[p] * EasyTab->Pressure[p] * 30;
+                            EasyTab->Pressure[p] * EasyTab->Pressure[p] * 20;
                         int dlsq = dx * dx + dy * dy;
 
                         // too close to the previous position, don't create an interpolant.
@@ -472,7 +478,7 @@ int main() {
                             continue;
                         }
 
-                        const int NUM_INTERPOLANTS = 2;
+                        const int NUM_INTERPOLANTS = 4;
                         for (int k = 0; k <= NUM_INTERPOLANTS; k++) {
                             int x = lerp(double(k) / NUM_INTERPOLANTS,
                                          g_curvestate.prevx,
@@ -575,9 +581,16 @@ int main() {
                 cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
                      << "\n";
                 if (event.key.keysym.sym == SDLK_q) {
+                    // undo 
                     g_commander.undo();
                 } else if (event.key.keysym.sym == SDLK_w) {
+                    // redo
                     g_commander.redo();
+                } else if (event.key.keysym.sym == SDLK_e) { 
+                    // toggle eraser
+                    g_colorstate.is_erasing = !g_colorstate.is_erasing;
+                } else if (event.key.keysym.sym == SDLK_r) {
+                    g_colorstate.colorix = (g_colorstate.colorix + 1) % g_palette.size();
                 }
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
                 string button_name = "unk";
