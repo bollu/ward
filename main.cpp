@@ -19,8 +19,9 @@ using namespace std;
 using namespace std;
 
 // 1080p
-#define SCREEN_WIDTH 1920
-#define SCREEN_HEIGHT 1000
+static const int  SCREEN_WIDTH = 1920;
+static const int  SCREEN_HEIGHT = 1000;
+static const int  NUM_SCREENS = 5; // 5x5 x screen total world size when we zoom out.
 
 struct Color {
     int r, g, b;
@@ -124,6 +125,7 @@ struct RenderState {
     float zoom;
     int panx, pany;
     RenderState() : zoom(1), panx(0), pany(0){};
+    bool damaged = true;
 } g_renderstate;
 
 std::vector<Circle> g_circles;
@@ -221,6 +223,8 @@ struct Commander {
     }
 
 } g_commander;
+
+
 
 // TODO: overview mode is very sluggish :( 
 void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
@@ -325,8 +329,6 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
-SDL_Texture *g_view_texture;
-
 
 // https://stackoverflow.com/a/3069122/5305365
 // Approximate General Sweep Boundary of a 2D Curved Object,
@@ -367,17 +369,21 @@ int main() {
         return -1;
     }
 
+
     ok = EasyTab_Load(sysinfo.info.x11.display, sysinfo.info.x11.window);
     if (ok != EASYTAB_OK) {
         cerr << "easytab error code: |" << ok << "|\n";
     }
     assert(ok == EASYTAB_OK && "unable to load easytab");
 
-    while (true) {
+    bool g_quit = false;
+    while (!g_quit) {
+        const Uint64 start_count = SDL_GetPerformanceCounter();
         // Get the next event
         SDL_Event event;
-        if (SDL_PollEvent(&event)) {
+        while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
+                g_quit = true;
                 break;
             }
 
@@ -444,6 +450,7 @@ int main() {
                         g_renderstate.pany =
                             g_panstate.startpany +
                             PAN_FACTOR * (g_panstate.starty - g_penstate.y);
+                        g_renderstate.damaged = true;
                         continue;
                     }
 
@@ -493,18 +500,18 @@ int main() {
                             // need post ++ for guid, as we need firt guid to be zero
                             // since we push it  back into a vector.
                             const Circle circle =
-                                Circle(x, y, radius, color, g_max_circle_guid++);
+                                Circle(x, y, radius, color, g_max_circle_guid);
                             // add circle to the vector to keeps the GUIDs correct.
-                            g_circles.push_back(circle);
 
                             // if we don't need this circle, continue, don't add
                             // it to the command. Such a circle is the price we pay...
                             // TODO: create code that cleans up such unreferenced circles!
                             if(add_circle_to_spatial_hash(circle)) {
+                                g_circles.push_back(circle);
                                 g_commander.add_to_command(circle);
-                            }
-                        }
-
+                                g_max_circle_guid++;
+                                g_renderstate.damaged = true;
+                            }                         }
                         g_curvestate.prevx = g_renderstate.panx + g_penstate.x;
                         g_curvestate.prevy = g_renderstate.pany + g_penstate.y;
                         continue;
@@ -514,14 +521,16 @@ int main() {
                     if (g_penstate.y >= SCREEN_HEIGHT - PALETTE_HEIGHT) {
                         // std::cerr << "COLOR PICKING\n";
                         int ix = g_penstate.x / PALETTE_WIDTN;
-                        if (ix == 0) {
-                            if (!g_colorstate.is_erasing) {
-                                g_commander.start_new_command();
-                            }
+                        if (ix == 0 && !g_colorstate.is_erasing) {
+                            g_commander.start_new_command();
                             g_colorstate.is_erasing = true;
-                        } else {
+                            g_renderstate.damaged = true;
+                        } 
+
+                        if (ix != 0 && (ix-1 != g_colorstate.colorix || g_colorstate.is_erasing)) {
                             g_colorstate.is_erasing = false;
                             g_colorstate.colorix = ix - 1;
+                            g_renderstate.damaged = true;
                         }
                         assert(g_colorstate.colorix >= 0);
                         assert(g_colorstate.colorix < g_palette.size());
@@ -568,8 +577,10 @@ int main() {
                                         ERASER_RADIUS * ERASER_RADIUS) {
                                         to_erase.push_back(cix);
                                         g_commander.add_to_command(c);
+                                        g_renderstate.damaged = true;
                                     }
                                 }
+
                                 for (int cix : to_erase) {
                                     bucket.erase(cix);
                                 }
@@ -602,6 +613,7 @@ int main() {
                         button_name = "right";
                         if (!g_overviewstate.overviewing) {
                             g_overviewstate.overviewing = true;
+                            g_renderstate.damaged = true;
                             g_renderstate.zoom = 1.0 / 5;
                             g_overviewstate.panx = g_renderstate.panx;
                             g_overviewstate.pany = g_renderstate.pany;
@@ -610,6 +622,7 @@ int main() {
                         }
                         if (g_overviewstate.overviewing) {
                             g_overviewstate.overviewing = false;
+                            g_renderstate.damaged = true;
                             g_renderstate.zoom = 1.0;
                             g_renderstate.panx = g_overviewstate.panx;
                             g_renderstate.pany = g_overviewstate.pany;
@@ -621,6 +634,7 @@ int main() {
                         button_name = "middle";
                         if (!g_overviewstate.overviewing) {
                             g_panstate.panning = true;
+                            g_renderstate.damaged = true;
                             g_panstate.startpanx = g_renderstate.panx;
                             g_panstate.startpany = g_renderstate.pany;
                             g_panstate.startx = g_penstate.x;
@@ -634,6 +648,12 @@ int main() {
                 }
                 cerr << "mousedown: |" << button_name << "\n";
             }
+    
+            else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_ENTER) {
+                g_renderstate.damaged = true; // need to repaint when window gains focus
+                continue;
+            }
+
 
             else if (event.type == SDL_MOUSEBUTTONUP) {
                 string button_name = "unk";
@@ -653,6 +673,7 @@ int main() {
                     case SDL_BUTTON_MIDDLE:
                         button_name = "middle";
                         if (!g_overviewstate.overviewing) {
+                            g_renderstate.damaged = true;
                             g_panstate.panning = false;
                             break;
                         }
@@ -667,25 +688,34 @@ int main() {
 
         // Randomly change the colour
 
-        // Fill the screen with the colour
-        if (g_overviewstate.overviewing) {
-            Uint8 opaque = 255;
-            SDL_SetRenderDrawColor(renderer, g_overview_background_color.r,
-                                   g_overview_background_color.g,
-                                   g_overview_background_color.b, opaque);
-
-        } else {
+        if (true || g_renderstate.damaged) {
+            // cout << "damaged. re-rendering frame\n";
+            g_renderstate.damaged = false;
             Uint8 opaque = 255;
             SDL_SetRenderDrawColor(renderer, g_draw_background_color.r,
-                                   g_draw_background_color.g,
-                                   g_draw_background_color.b, opaque);
+                    g_draw_background_color.g,
+                    g_draw_background_color.b, opaque);
+            SDL_RenderClear(renderer);
+            draw_pen_strokes(renderer);
+            if (!g_panstate.panning && !g_overviewstate.overviewing) {
+                draw_palette(renderer);
+            }
+            SDL_RenderPresent(renderer);
         }
-        SDL_RenderClear(renderer);
-        draw_pen_strokes(renderer);
-        if (!g_panstate.panning && !g_overviewstate.overviewing) {
-            draw_palette(renderer);
+
+        const Uint64 end_count = SDL_GetPerformanceCounter();
+        const int counts_per_second = SDL_GetPerformanceFrequency();
+        const double elapsedSec = (end_count - start_count) / (double) counts_per_second;
+        const double elapsedMS = elapsedSec * 1000.0;
+        int FPS = 1.0 / elapsedSec;
+        const int TARGET_FPS = 60;
+        const double timeToNextFrameMs = 1000.0 / TARGET_FPS;
+        if (timeToNextFrameMs > elapsedMS) {
+            // SDL_Delay(floor(1000.0/TARGET_FPS - elapsedMS));
+            printf("elapsed time: %4.2f | time to next frame: %4.2f\n", elapsedMS, timeToNextFrameMs);
+            // std::cout << "fps: " << FPS << " | elapsed msec: " << elapsedMS << " | time to next frame ms: " << timeToNextFrameMs << "\n";
+            SDL_Delay((timeToNextFrameMs - elapsedMS)); 
         }
-        SDL_RenderPresent(renderer);
     }
 
     // Tidy up
