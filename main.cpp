@@ -485,7 +485,7 @@ int main() {
                             continue;
                         }
 
-                        const int NUM_INTERPOLANTS = 4;
+                        const int NUM_INTERPOLANTS = min<int>(max<int>(1, sqrt(dlsq)), 10);
                         for (int k = 0; k <= NUM_INTERPOLANTS; k++) {
                             int x = lerp(double(k) / NUM_INTERPOLANTS,
                                          g_curvestate.prevx,
