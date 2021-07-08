@@ -1,9 +1,9 @@
 <p align="center">
 <img src="https://github.com/bollu/ward/raw/master/icon.png" alt="icon" style="float:right;" > 
-<h1 align="center"> `WARD`: `WARD` 'aint really for drawing  </h1>
+<h1 align="center"> <code>WARD</code>: <code>WARD</code> 'Aint Really for Drawing  </h1>
+<img src="https://github.com/bollu/ward/raw/master/static/ward-drawing.png" alt="alt  height="256">
 </p>
 
-<img src="https://github.com/bollu/ward/raw/master/static/ward-drawing.png" alt="alt text" width="whatever" height="256">
 
 
 
