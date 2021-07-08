@@ -1,4 +1,4 @@
-# ward: ward 'aint ready for drawing
+# <img src="https://github.com/bollu/ward/raw/master/icon.png alt="icon" style="float:right;" >  WARD: WARD 'aint ready for drawing 
 
 <img src="https://github.com/bollu/ward/raw/master/static/ward-drawing.png" alt="alt text" width="whatever" height="256">
 
