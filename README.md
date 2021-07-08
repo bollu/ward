@@ -40,6 +40,7 @@ The code uses:
 
 - the [EasyTab](https://github.com/ApoorvaJ/EasyTab) library to work with Wacom tablets.
 - The [Milton project](https://github.com/serge-rgb/milton) as heavy reference on how to work with tablets.
-- [SDL2](https://www.libsdl.org/) for rendering
-
+- [SDL2](https://www.libsdl.org/) for rendering.
+- [Spatial hashing](http://www.cs.ucf.edu/~jmesit/publications/scsc%202005.pdf) to quickly add and delete brush strokes.
+- Lazy repainting of the entire frame upon change..
 
