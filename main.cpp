@@ -690,10 +690,9 @@ int main() {
             }
         }
 
-        // Randomly change the colour
-
+        // for logging into the console.
+        const bool logging_was_damaged = g_renderstate.damaged;
         if (g_renderstate.damaged) {
-            cout << "damaged. re-rendering frame\n";
             g_renderstate.damaged = false;
             Uint8 opaque = 255;
             SDL_SetRenderDrawColor(renderer, g_draw_background_color.r,
@@ -716,7 +715,9 @@ int main() {
         const double timeToNextFrameMs = 1000.0 / TARGET_FPS;
         if (timeToNextFrameMs > elapsedMS) {
             // SDL_Delay(floor(1000.0/TARGET_FPS - elapsedMS));
-            printf("elapsed time: %4.2f | time to next frame: %4.2f\n", elapsedMS, timeToNextFrameMs);
+            printf("%20s | elapsed time: %4.2f | sleeping for: %4.2f | time to next frame: %4.2f\n", 
+                    (logging_was_damaged ? "DAMAGED" : ""),
+                    elapsedMS, timeToNextFrameMs - elapsedMS, timeToNextFrameMs);
             // std::cout << "fps: " << FPS << " | elapsed msec: " << elapsedMS << " | time to next frame ms: " << timeToNextFrameMs << "\n";
             SDL_Delay((timeToNextFrameMs - elapsedMS)); 
         }
