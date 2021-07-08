@@ -1,4 +1,7 @@
-# <img src="https://github.com/bollu/ward/raw/master/icon.png alt="icon" style="float:right;" >  WARD: WARD 'aint ready for drawing 
+<p align="center">
+<img src="https://github.com/bollu/ward/raw/master/icon.png alt="icon" style="float:right;" > 
+<h1 align="center"> WARD: WARD 'aint ready for drawing  </h1>
+</p>
 
 <img src="https://github.com/bollu/ward/raw/master/static/ward-drawing.png" alt="alt text" width="whatever" height="256">
 
