@@ -16,12 +16,14 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - save/load.
 - custom palettes
 - ... custom anything, really.
+- mouse support.
 
 #### This features:
 
 - Rock solid framerate.
 - Infinite undo/redo.
-- panning on an infinite whiteboard.
+- infinite whiteboard with panning.
+- Wacom tablet pressure sensitive drawing.
 - quick minimap view to view the entire whiteboard at a glance.
 - Not written using web tech: 530 lines of readable c++ code.
 
