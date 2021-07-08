@@ -1,5 +1,5 @@
 <p align="center">
-<img src="https://github.com/bollu/ward/raw/master/icon.png alt="icon" style="float:right;" > 
+<img src="https://github.com/bollu/ward/raw/master/icon.png" alt="icon" style="float:right;" > 
 <h1 align="center"> WARD: WARD 'aint ready for drawing  </h1>
 </p>
 
