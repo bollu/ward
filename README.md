@@ -19,10 +19,11 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 
 #### This features:
 
-- Color palette of material colors.
+- Rock solid framerate.
+- Infinite undo/redo.
 - panning on an infinite whiteboard.
 - quick minimap view to view the entire whiteboard at a glance.
-- 530 lines of readable c++ code.
+- Not written using web tech: 530 lines of readable c++ code.
 
 #### shortcuts:
 
