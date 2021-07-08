@@ -593,15 +593,19 @@ int main() {
                      << "\n";
                 if (event.key.keysym.sym == SDLK_q) {
                     // undo 
+                    g_renderstate.damaged = true;
                     g_commander.undo();
                 } else if (event.key.keysym.sym == SDLK_w) {
                     // redo
+                    g_renderstate.damaged = true;
                     g_commander.redo();
                 } else if (event.key.keysym.sym == SDLK_e) { 
                     // toggle eraser
+                    g_renderstate.damaged = true;
                     g_colorstate.is_erasing = !g_colorstate.is_erasing;
                 } else if (event.key.keysym.sym == SDLK_r) {
                     g_colorstate.colorix = (g_colorstate.colorix + 1) % g_palette.size();
+                    g_renderstate.damaged = true;
                 }
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
                 string button_name = "unk";
@@ -688,8 +692,8 @@ int main() {
 
         // Randomly change the colour
 
-        if (true || g_renderstate.damaged) {
-            // cout << "damaged. re-rendering frame\n";
+        if (g_renderstate.damaged) {
+            cout << "damaged. re-rendering frame\n";
             g_renderstate.damaged = false;
             Uint8 opaque = 255;
             SDL_SetRenderDrawColor(renderer, g_draw_background_color.r,
