@@ -124,7 +124,7 @@ struct OverviewState {
 struct RenderState {
     float zoom;
     int panx, pany;
-    RenderState() : zoom(1), panx(0), pany(0){};
+    RenderState() : zoom(1), panx(SCREEN_WIDTH*2), pany(SCREEN_HEIGHT*2){};
     bool damaged = true;
 } g_renderstate;
 
@@ -476,14 +476,11 @@ int main() {
                         const int dx = abs(g_penstate.x - g_curvestate.prevx);
                         const int dy = abs(g_penstate.y - g_curvestate.prevy);
 
-                        const int radius =
-                            EasyTab->Pressure[p] * EasyTab->Pressure[p] * 20;
+                        const int radius = EasyTab->Pressure[p] * 10;
                         int dlsq = dx * dx + dy * dy;
 
                         // too close to the previous position, don't create an interpolant.
-                        if (dlsq < radius * radius) {
-                            continue;
-                        }
+                        if (dlsq < radius * radius) { continue; }
 
                         const int NUM_INTERPOLANTS = min<int>(max<int>(1, sqrt(dlsq)), 10);
                         for (int k = 0; k <= NUM_INTERPOLANTS; k++) {
