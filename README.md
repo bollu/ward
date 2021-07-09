@@ -46,3 +46,15 @@ The code uses:
 - [Spatial hashing](http://www.cs.ucf.edu/~jmesit/publications/scsc%202005.pdf) to quickly add and delete brush strokes.
 - Lazy repainting of the entire frame upon change..
 
+
+#### Build with `CMake`
+
+```
+$ mkdir build && cmake ../ && make -j
+```
+
+#### Build with `Meson`
+
+```
+$ meson build && cd build && ninja && ./ward
+```

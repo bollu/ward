@@ -7,8 +7,8 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -fdiagnostics-color=alway
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always -O2")
 
-find_package(SDL2)
-find_package(X11)
+find_package(SDL2 REQUIRED)
+find_package(X11 REQUIRED)
 add_executable(ward main.cpp)
 target_link_libraries(ward SDL2::SDL2 SDL2::SDL2main  ${X11_LIBRARIES} ${X11_Xinput_LIB})
 
