@@ -110,7 +110,7 @@ struct ColorState {
     int startpickx;
     int startpicky;
     int colorix = 0;
-    bool is_erasing;
+    bool is_eraser;
 } g_colorstate;
 
 struct OverviewState {
@@ -298,7 +298,7 @@ void draw_palette(SDL_Renderer *renderer) {
         rect.x = 0 * PALETTE_WIDTN;
         rect.w = PALETTE_WIDTN;
 
-        rect.h = (g_colorstate.is_erasing ? SELECTED_PALETTE_HEIGHT
+        rect.h = (g_colorstate.is_eraser ? SELECTED_PALETTE_HEIGHT
                                           : PALETTE_HEIGHT);
         rect.y = SCREEN_HEIGHT - rect.h;
         Color color = Color::RGB(255, 255, 255);  // eraser indicated by white.
@@ -312,7 +312,7 @@ void draw_palette(SDL_Renderer *renderer) {
         // leave gap at beginnning for eraser.
         rect.x = (1 + i) * PALETTE_WIDTN;
         rect.w = PALETTE_WIDTN;
-        bool selected = !g_colorstate.is_erasing && (g_colorstate.colorix == i);
+        bool selected = !g_colorstate.is_eraser && (g_colorstate.colorix == i);
         rect.h = selected ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT;
         rect.y = SCREEN_HEIGHT - rect.h;
 
@@ -462,9 +462,10 @@ int main() {
                         continue;
                     }
 
+
                     // pressing down, not with eraser.
                     if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) &&
-                        !g_colorstate.is_erasing) {
+                        !g_colorstate.is_eraser) {
                         if (!g_curvestate.is_drawing) {
                             g_curvestate.startx = g_curvestate.prevx =
                                 g_penstate.x + g_renderstate.panx;
@@ -519,14 +520,13 @@ int main() {
                     if (g_penstate.y >= SCREEN_HEIGHT - PALETTE_HEIGHT) {
                         // std::cerr << "COLOR PICKING\n";
                         int ix = g_penstate.x / PALETTE_WIDTN;
-                        if (ix == 0 && !g_colorstate.is_erasing) {
-                            g_commander.start_new_command();
-                            g_colorstate.is_erasing = true;
+                        if (ix == 0 && !g_colorstate.is_eraser) {
+                            g_colorstate.is_eraser = true;
                             g_renderstate.damaged = true;
                         } 
 
-                        if (ix != 0 && (ix-1 != g_colorstate.colorix || g_colorstate.is_erasing)) {
-                            g_colorstate.is_erasing = false;
+                        if (ix != 0 && (ix-1 != g_colorstate.colorix || g_colorstate.is_eraser)) {
+                            g_colorstate.is_eraser = false;
                             g_colorstate.colorix = ix - 1;
                             g_renderstate.damaged = true;
                         }
@@ -536,12 +536,24 @@ int main() {
                     }
 
                     // hovering, since we got an event or pressing down, while
-                    // is_erasing.
+                    // is_eraser.
                     // pen down with eraser.
-                    if (g_colorstate.is_erasing && (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                    static bool is_erasing = false;
+
+                    // not erasing / hovering
+                    if (is_erasing && !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                        is_erasing = false;
+                        continue;
+                    }
+
+                    if (g_colorstate.is_eraser && (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                        if (!is_erasing) {
+                            is_erasing = true;
+                            g_commander.start_new_command();
+                        }
                         const int ERASER_RADIUS =
-                            40 + (EasyTab->Pressure[p] * 100);
-                        // std::cerr << "is_erasing (radius=" << ERASER_RADIUS
+                            30 + (EasyTab->Pressure[p] * 100);
+                        // std::cerr << "is_eraser (radius=" << ERASER_RADIUS
                         // <<
                         // ")\n";
 
@@ -585,7 +597,7 @@ int main() {
                                 }
                             }
                         }
-                    }  // end if(is_erasing )
+                    }  // end if(is_eraser )
                 }      // end loop over packets
             } else if (event.type == SDL_KEYDOWN) {
                 cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
@@ -601,7 +613,7 @@ int main() {
                 } else if (event.key.keysym.sym == SDLK_e) { 
                     // toggle eraser
                     g_renderstate.damaged = true;
-                    g_colorstate.is_erasing = !g_colorstate.is_erasing;
+                    g_colorstate.is_eraser = !g_colorstate.is_eraser;
                 } else if (event.key.keysym.sym == SDLK_r) {
                     g_colorstate.colorix = (g_colorstate.colorix + 1) % g_palette.size();
                     g_renderstate.damaged = true;
