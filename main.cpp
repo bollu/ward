@@ -138,6 +138,7 @@ struct hash_pair_int {
     };
 };
 
+// TODO: order the circle indexes by insertion time, so we paint in the right order.
 static const int SPATIAL_HASH_CELL_SIZE = 300;
 unordered_map<pair<int, int>, unordered_set<int>, hash_pair_int> g_spatial_hash;
 
@@ -374,7 +375,7 @@ int main() {
     if (ok != EASYTAB_OK) {
         cerr << "easytab error code: |" << ok << "|\n";
     }
-    assert(ok == EASYTAB_OK && "unable to load easytab");
+    assert(ok == EASYTAB_OK && "PLEASE plug in your drawing tablet! [unable to load easytab]");
 
     bool g_quit = false;
     while (!g_quit) {
@@ -536,7 +537,8 @@ int main() {
 
                     // hovering, since we got an event or pressing down, while
                     // is_erasing.
-                    if (g_colorstate.is_erasing) {
+                    // pen down with eraser.
+                    if (g_colorstate.is_erasing && (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
                         const int ERASER_RADIUS =
                             40 + (EasyTab->Pressure[p] * 100);
                         // std::cerr << "is_erasing (radius=" << ERASER_RADIUS
