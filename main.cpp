@@ -19,8 +19,8 @@ using namespace std;
 using namespace std;
 
 // 1080p
-static const int  SCREEN_WIDTH = 1920;
-static const int  SCREEN_HEIGHT = 1000;
+int SCREEN_WIDTH = -1;
+int SCREEN_HEIGHT = -1;
 static const int  NUM_SCREENS = 5; // 5x5 x screen total world size when we zoom out.
 
 struct Color {
@@ -47,8 +47,11 @@ static const vector<Color> g_palette = {
 };
 
 // leave gap in beginning for eraser.
-static const int PALETTE_WIDTN = SCREEN_WIDTH / (1 + g_palette.size());
-static const int PALETTE_HEIGHT = SCREEN_HEIGHT / 20;
+// static const int PALETTE_WIDTH = SCREEN_WIDTH / (1 + g_palette.size());
+// static const int PALETTE_HEIGHT = SCREEN_HEIGHT / 20;
+int PALETTE_WIDTH = -1;
+int PALETTE_HEIGHT = -1;
+
 
 //  https://github.com/serge-rgb/milton --- has great reference code for stylus
 //  + SDL
@@ -265,27 +268,6 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
             }
         }
     }
-
-    /*
-    for (const Circle &c : g_circles) {
-        if (c.erased) {
-            continue;
-        }
-        SDL_Rect rect;
-        rect.x = c.x - c.radius;
-        rect.y = c.y - c.radius;
-        rect.w = rect.h = c.radius;
-        rect.x -= g_renderstate.panx;
-        rect.y -= g_renderstate.pany;
-        rect.x *= g_renderstate.zoom;
-        rect.y *= g_renderstate.zoom;
-        rect.w *= g_renderstate.zoom;
-        rect.h *= g_renderstate.zoom;
-        SDL_SetRenderDrawColor(renderer, c.color.r, c.color.g, c.color.b,
-                               SDL_ALPHA_OPAQUE);
-        SDL_RenderFillRect(renderer, &rect);
-    }
-    */
 }
 
 void draw_palette(SDL_Renderer *renderer) {
@@ -295,8 +277,8 @@ void draw_palette(SDL_Renderer *renderer) {
     {
         SDL_Rect rect;
         // leave gap at beginnning for eraser.
-        rect.x = 0 * PALETTE_WIDTN;
-        rect.w = PALETTE_WIDTN;
+        rect.x = 0 * PALETTE_WIDTH;
+        rect.w = PALETTE_WIDTH;
 
         rect.h = (g_colorstate.is_eraser ? SELECTED_PALETTE_HEIGHT
                                           : PALETTE_HEIGHT);
@@ -310,8 +292,8 @@ void draw_palette(SDL_Renderer *renderer) {
     for (int i = 0; i < g_palette.size(); ++i) {
         SDL_Rect rect;
         // leave gap at beginnning for eraser.
-        rect.x = (1 + i) * PALETTE_WIDTN;
-        rect.w = PALETTE_WIDTN;
+        rect.x = (1 + i) * PALETTE_WIDTH;
+        rect.w = PALETTE_WIDTH;
         bool selected = !g_colorstate.is_eraser && (g_colorstate.colorix == i);
         rect.h = selected ? SELECTED_PALETTE_HEIGHT : PALETTE_HEIGHT;
         rect.y = SCREEN_HEIGHT - rect.h;
@@ -343,6 +325,17 @@ int main() {
         cerr << "Failed to initialise SDL\n";
         return -1;
     }
+
+    SDL_DisplayMode DM;
+    SDL_GetCurrentDisplayMode(0, &DM);
+    SCREEN_WIDTH = DM.w;
+    SCREEN_HEIGHT = DM.h;
+
+    assert(SCREEN_WIDTH >= 0 && "unable to detect screen width");
+    assert(SCREEN_HEIGHT >= 0 && "unable to detect screen height");
+    
+    PALETTE_WIDTH = SCREEN_WIDTH / (1 + g_palette.size());
+    PALETTE_HEIGHT = SCREEN_HEIGHT / 20;
 
     // Create a window
     SDL_Window *window = SDL_CreateWindow("WARD", SDL_WINDOWPOS_UNDEFINED,
@@ -519,7 +512,7 @@ int main() {
                     // choosing a color.
                     if (g_penstate.y >= SCREEN_HEIGHT - PALETTE_HEIGHT) {
                         // std::cerr << "COLOR PICKING\n";
-                        int ix = g_penstate.x / PALETTE_WIDTN;
+                        int ix = g_penstate.x / PALETTE_WIDTH;
                         if (ix == 0 && !g_colorstate.is_eraser) {
                             g_colorstate.is_eraser = true;
                             g_renderstate.damaged = true;
