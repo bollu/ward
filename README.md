@@ -26,7 +26,7 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] Wacom tablet pressure sensitive drawing.
 - [x] quick minimap view to view the entire whiteboard at a glance.
 - [x] Not written using web tech: 530 lines of readable c++ code.
-- [ ] grid background
+- [x] grid background
 - [ ] reisizing support.
 
 #### shortcuts:

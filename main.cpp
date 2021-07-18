@@ -231,8 +231,7 @@ struct Commander {
 
 
 // TODO: overview mode is very sluggish :( 
-void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
-                      const int HEIGHT = SCREEN_HEIGHT) {
+void draw_pen_strokes(SDL_Renderer *renderer) {
     const float zoominv = (1.0 / g_renderstate.zoom);
     const int startx = zoominv * g_renderstate.panx;
     const int starty = zoominv * g_renderstate.pany;
@@ -269,6 +268,32 @@ void draw_pen_strokes(SDL_Renderer *renderer, int const WIDTH = SCREEN_WIDTH,
         }
     }
 }
+
+void  draw_grid(SDL_Renderer *renderer) {
+    const int GRIDSIZE = g_renderstate.zoom * 100;
+    const int STARTY = -1 * (GRIDSIZE + (g_renderstate.pany % GRIDSIZE));
+    const int STARTX = -1 * (GRIDSIZE + (g_renderstate.panx % GRIDSIZE));
+
+    // set grid color.
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, SDL_ALPHA_OPAQUE);
+
+    for(int x = STARTX; x <= STARTX + SCREEN_WIDTH + GRIDSIZE; x += GRIDSIZE) {
+        SDL_RenderDrawLine(renderer, 
+			 x, STARTY, 
+			 x, STARTY + SCREEN_HEIGHT + 2*GRIDSIZE);
+
+    }
+
+
+    for(int y = STARTY; y <= STARTY + SCREEN_HEIGHT + GRIDSIZE; y += GRIDSIZE) {
+        SDL_RenderDrawLine(renderer, 
+			STARTX, y
+			, STARTX + SCREEN_WIDTH + 2*GRIDSIZE, y);
+        
+    }
+
+};
+
 
 void draw_palette(SDL_Renderer *renderer) {
     // selected palette is drawn slightly higher.
@@ -703,6 +728,7 @@ int main() {
                     g_draw_background_color.g,
                     g_draw_background_color.b, opaque);
             SDL_RenderClear(renderer);
+            draw_grid(renderer);
             draw_pen_strokes(renderer);
             if (!g_panstate.panning && !g_overviewstate.overviewing) {
                 draw_palette(renderer);
