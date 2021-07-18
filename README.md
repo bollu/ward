@@ -20,12 +20,14 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 
 #### This features:
 
-- Rock solid framerate.
-- Infinite undo/redo.
-- infinite whiteboard with panning.
-- Wacom tablet pressure sensitive drawing.
-- quick minimap view to view the entire whiteboard at a glance.
-- Not written using web tech: 530 lines of readable c++ code.
+- [x] Rock solid framerate.
+- [x] Infinite undo/redo.
+- [x] infinite whiteboard with panning.
+- [x] Wacom tablet pressure sensitive drawing.
+- [x] quick minimap view to view the entire whiteboard at a glance.
+- [x] Not written using web tech: 530 lines of readable c++ code.
+- [ ] grid background
+- [ ] reisizing support.
 
 #### shortcuts:
 
