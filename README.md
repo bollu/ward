@@ -52,7 +52,7 @@ The code uses:
 #### Build with `CMake`
 
 ```
-$ mkdir build && cmake ../ && make -j
+$ mkdir build && cd build && cmake ../ && make -j
 ```
 
 #### Build with `Meson`
