@@ -441,8 +441,7 @@ int main() {
                 for (int p = 0; p < EasyTab->NumPackets; ++p) {
                     g_penstate.x = EasyTab->PosX[p];
                     g_penstate.y = EasyTab->PosY[p];
-                    const int pressure = EasyTab->Pressure[p];
-
+                    const float pressure = EasyTab->Pressure[p];
                     static const float PAN_FACTOR = 3;
 
                     // overview
@@ -496,7 +495,9 @@ int main() {
                         const int dx = abs(g_penstate.x - g_curvestate.prevx);
                         const int dy = abs(g_penstate.y - g_curvestate.prevy);
 
-                        const int radius = EasyTab->Pressure[p] * 10;
+                        static const int MIN_PEN_RADIUS = 10;
+                        static const int MAX_PEN_RADIUS = 10;
+                        const int radius = int((1. - pressure) * (float)MIN_PEN_RADIUS + pressure * (float)MAX_PEN_RADIUS);
                         int dlsq = dx * dx + dy * dy;
 
                         // too close to the previous position, don't create an interpolant.
