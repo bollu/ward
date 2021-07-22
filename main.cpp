@@ -84,29 +84,23 @@ struct Circle {
 };
 
 struct CurveState {
-    int startx;
-    int starty;
-    int prevx;
-    int prevy;
-    bool is_drawing;
-    CurveState()
-        : startx(0), starty(0), prevx(0), prevy(0), is_drawing(false){};
+    int startx = 0;
+    int starty = 0;
+    int prevx = 0;
+    int prevy = 0;
+    bool is_down = false;
 } g_curvestate;
 
 struct PenState {
-    int x, y;
-    PenState() : x(0), y(0){};
+    int x = 0, y = 0;
 } g_penstate;
 
 struct PanState {
-    bool panning;
-    int startpanx;
-    int startpany;
-    int startx;
-    int starty;
-
-    PanState()
-        : panning(false), startpanx(0), startpany(0), startx(0), starty(0){};
+    bool panning = false;
+    int startpanx = 0;
+    int startpany = 0;
+    int startx = 0;
+    int starty = 0;
 } g_panstate;
 
 struct ColorState {
@@ -472,10 +466,10 @@ int main() {
                         continue;
                     }
 
-                    // not is_drawing / hovering
-                    if (g_curvestate.is_drawing &&
+                    // not is_down / hovering
+                    if (g_curvestate.is_down &&
                         !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
-                        g_curvestate.is_drawing = false;
+                        g_curvestate.is_down = false;
                         continue;
                     }
 
@@ -483,12 +477,12 @@ int main() {
                     // pressing down, not with eraser.
                     if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) &&
                         !g_colorstate.is_eraser) {
-                        if (!g_curvestate.is_drawing) {
+                        if (!g_curvestate.is_down) {
                             g_curvestate.startx = g_curvestate.prevx =
                                 g_penstate.x + g_renderstate.panx;
                             g_curvestate.starty = g_curvestate.prevy =
                                 g_penstate.y + g_renderstate.pany;
-                            g_curvestate.is_drawing = true;
+                            g_curvestate.is_down = true;
                             g_commander.start_new_command();
                         }
 
@@ -557,17 +551,16 @@ int main() {
                     // hovering, since we got an event or pressing down, while
                     // is_eraser.
                     // pen down with eraser.
-                    static bool is_erasing = false;
 
                     // not erasing / hovering
-                    if (is_erasing && !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
-                        is_erasing = false;
+                    if (g_curvestate.is_down && !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                        g_curvestate.is_down = false;
                         continue;
                     }
 
                     if (g_colorstate.is_eraser && (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
-                        if (!is_erasing) {
-                            is_erasing = true;
+                        if (!g_curvestate.is_down) {
+                            g_curvestate.is_down = true;
                             g_commander.start_new_command();
                         }
                         const int ERASER_RADIUS =
@@ -622,11 +615,13 @@ int main() {
                 cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
                      << "\n";
                 if (event.key.keysym.sym == SDLK_q) {
+                    if (g_curvestate.is_down) { continue; }
                     // undo 
                     g_renderstate.damaged = true;
                     g_commander.undo();
                 } else if (event.key.keysym.sym == SDLK_w) {
                     // redo
+                    if (g_curvestate.is_down) { continue; }
                     g_renderstate.damaged = true;
                     g_commander.redo();
                 } else if (event.key.keysym.sym == SDLK_e) { 
