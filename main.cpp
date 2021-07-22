@@ -275,7 +275,7 @@ void  draw_grid(SDL_Renderer *renderer) {
     const int STARTX = -1 * (GRIDSIZE + (g_renderstate.panx % GRIDSIZE));
 
     // set grid color.
-    SDL_SetRenderDrawColor(renderer, 150, 150, 150, SDL_ALPHA_OPAQUE);
+    SDL_SetRenderDrawColor(renderer, 170, 170, 170, SDL_ALPHA_OPAQUE);
 
     for(int x = STARTX; x <= STARTX + SCREEN_WIDTH + GRIDSIZE; x += GRIDSIZE) {
         SDL_RenderDrawLine(renderer, 

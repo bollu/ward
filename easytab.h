@@ -754,7 +754,9 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
     {
         fprintf(stderr, "easytab: #device[%d] = %s\n", i, Devices[i].name);
         if (!strstr(Devices[i].name, "stylus") &&
+            !strstr(Devices[i].name, "STYLUS") && 
             !strstr(Devices[i].name, "Wacom") && 
+            !strstr(Devices[i].name, "ERASER") && 
             !strstr(Devices[i].name, "eraser")) { continue; }
 
         EasyTab->Device = XOpenDevice(Disp, Devices[i].id);
