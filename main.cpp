@@ -18,11 +18,13 @@
 using namespace std;
 using namespace std;
 
+
 // 1080p
 int SCREEN_WIDTH = -1;
 int SCREEN_HEIGHT = -1;
 
-static const int  NUM_SCREENS = 5; // 5x5 x screen total world size when we zoom out.
+static const int NUM_SCREENS =
+    5;  // 5x5 x screen total world size when we zoom out.
 
 struct Color {
     int r, g, b;
@@ -48,15 +50,9 @@ static const vector<Color> g_palette = {
 };
 
 // leave gap in beginning for eraser.
-int PALETTE_WIDTH() {
-    return SCREEN_WIDTH / (1 + g_palette.size());
-}
+int PALETTE_WIDTH() { return SCREEN_WIDTH / (1 + g_palette.size()); }
 
-int PALETTE_HEIGHT() {
-    return SCREEN_HEIGHT / 20;
-}
-
-
+int PALETTE_HEIGHT() { return SCREEN_HEIGHT / 20; }
 
 //  https://github.com/serge-rgb/milton --- has great reference code for stylus
 //  + SDL
@@ -69,10 +65,38 @@ int PALETTE_HEIGHT() {
 // pen upper button: right
 
 // TODO: refactor with vec..
+template<typename T>
 struct Vec {
-    int x;
-    int y;
+    T x = 0;
+    T y = 0;
+    Vec() : x(0), y(0) {};
+    Vec(T x, T y) : x(x), y(y) {};
+
+    Vec<T> sub(const Vec<T> & other) const {
+        return Vec(x - other.x, y - other.y);
+    }
+
+    Vec<T> add(const Vec<T> & other) const {
+        return Vec(x + other.x, y + other.y);
+    }
+
+    Vec<T> scale(float f) const {
+        return Vec(f*x, f*y);
+    }
+
+    T lensq() const {
+        return x*x + y*y;
+    }
 };
+
+template<typename T>
+Vec<T> operator + (Vec<T> a, Vec<T> b) { return a.add(b); }
+
+template<typename T>
+Vec<T> operator - (Vec<T> a, Vec<T> b) { return a.sub(b); }
+
+template<typename T>
+Vec<T> operator * (float f, Vec<T> a) { return a.scale(f); }
 
 using ll = long long;
 static ll g_max_circle_guid = 0;
@@ -80,57 +104,55 @@ static ll g_max_circle_guid = 0;
 using ll = long long;
 struct Circle {
     ll guid;
-    int x, y;
+    Vec<int> pos;
     int radius;
     Color color;
 
-    Circle(int x, int y, int radius, Color color, ll guid)
-        : x(x), y(y), radius(radius), color(color), guid(guid) {}
+    Circle(Vec<int> pos, int radius, Color color, ll guid)
+        : pos(pos), radius(radius), color(color), guid(guid) {}
 };
 
 struct CurveState {
-    int startx = 0;
-    int starty = 0;
-    int prevx = 0;
-    int prevy = 0;
+    Vec<int> start;
+    Vec<int> prev;
     bool is_down = false;
 } g_curvestate;
 
-struct PenState {
-    int x = 0, y = 0;
-} g_penstate;
+Vec<int> g_penstate;
 
 struct PanState {
     bool panning = false;
-    int startpanx = 0;
-    int startpany = 0;
-    int startx = 0;
-    int starty = 0;
+    Vec<int> startpan;
+    Vec<int> startpenpos;
 } g_panstate;
 
 struct ColorState {
-    int startpickx;
-    int startpicky;
+    Vec<int> startpick;
     int colorix = 0;
     bool is_eraser;
 } g_colorstate;
 
 struct OverviewState {
-    bool overviewing;
-    int panx;
-    int pany;
-
-    OverviewState() : overviewing(false), panx(0), pany(0){};
+    bool overviewing = false;
+    Vec<int> pan;
 } g_overviewstate;
 
 struct RenderState {
-    float zoom;
-    int panx, pany;
-    RenderState() : zoom(1), panx(SCREEN_WIDTH*2), pany(SCREEN_HEIGHT*2){};
+    float zoom = 1;
+    Vec<int> pan = Vec<int>(SCREEN_WIDTH*2, SCREEN_HEIGHT*2);
     bool damaged = true;
 } g_renderstate;
 
 std::vector<Circle> g_circles;
+
+// catmull rom spline
+template<typename T>
+T catmullrom(T p0, T p1, T p2, T p3, float t) {
+    return 0.5 * ((2 * p1) + 
+            (-p0 + p2)  * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+            (-p0 + 3*p1- 3*p2 + p3) * t * t * t);
+};
 
 // dubious has concatenation from stack overflow:
 // https://stackoverflow.com/a/54945214/5305365
@@ -140,36 +162,38 @@ struct hash_pair_int {
     };
 };
 
-// TODO: order the circle indexes by insertion time, so we paint in the right order.
+// TODO: order the circle indexes by insertion time, so we paint in the right
+// order.
 static const int SPATIAL_HASH_CELL_SIZE = 300;
 unordered_map<pair<int, int>, unordered_set<int>, hash_pair_int> g_spatial_hash;
 
 // returns if circle was really added.
 bool add_circle_to_spatial_hash(const Circle &c) {
-    int sx = c.x / SPATIAL_HASH_CELL_SIZE;
-    int sy = c.y / SPATIAL_HASH_CELL_SIZE;
+    int sx = c.pos.x / SPATIAL_HASH_CELL_SIZE;
+    int sy = c.pos.y / SPATIAL_HASH_CELL_SIZE;
     // TODO: treat circles as rects, not points.
     unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
 
     // this is already covered.
     for (int ix : bucket) {
         const Circle &d = g_circles[ix];
-        int dx = c.x - d.x;
-        int dy = c.y - d.y;
-        int dlsq = dx * dx + dy * dy;
-        if (sqrt(dlsq) + c.radius < d.radius) {
+        Vec<int> delta = c.pos - d.pos;
+        // int dx = c.pos.x - d.x;
+        // int dy = c.pos.y - d.y;
+        // int dlsq = dx * dx + dy * dy;
+        if (sqrt(delta.lensq()) + c.radius < d.radius) {
             return false;
         }
     }
     bucket.insert(c.guid);
-    return true; 
+    return true;
 }
 
 void run_command(vector<int> &cmd) {
     for (const int cix : cmd) {
         const Circle &c = g_circles[cix];
-        const int sx = c.x / SPATIAL_HASH_CELL_SIZE;
-        const int sy = c.y / SPATIAL_HASH_CELL_SIZE;
+        const int sx = c.pos.x / SPATIAL_HASH_CELL_SIZE;
+        const int sy = c.pos.y / SPATIAL_HASH_CELL_SIZE;
         std::unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
         if (bucket.count(cix)) {
             bucket.erase(cix);
@@ -225,22 +249,25 @@ struct Commander {
         this->cmds[this->runtill].push_back(c.guid);
     }
 
+    const vector<int> &getCommand() const {
+        assert(this->runtill == this->cmds.size() - 1);
+        assert(this->cmds.size() > 0);
+        return this->cmds[this->runtill];
+    }
+
 } g_commander;
 
-
-
-// TODO: overview mode is very sluggish :( 
+// TODO: overview mode is very sluggish :(
 void draw_pen_strokes(SDL_Renderer *renderer) {
     const float zoominv = (1.0 / g_renderstate.zoom);
-    const int startx = zoominv * g_renderstate.panx;
-    const int starty = zoominv * g_renderstate.pany;
+    const int startx = zoominv * g_renderstate.pan.x;
+    const int starty = zoominv * g_renderstate.pan.y;
     const int endx = zoominv * (startx + SCREEN_WIDTH);
     const int endy = zoominv * (starty + SCREEN_HEIGHT);
 
     for (int xix = startx / SPATIAL_HASH_CELL_SIZE - 1;
          xix <= endx / SPATIAL_HASH_CELL_SIZE; ++xix) {
         for (int yix = starty / SPATIAL_HASH_CELL_SIZE - 1; yix < endy; ++yix) {
-
             if (!g_spatial_hash.count(make_pair(xix, yix))) {
                 continue;
             }
@@ -251,48 +278,43 @@ void draw_pen_strokes(SDL_Renderer *renderer) {
                 const Circle &c = g_circles[cix];
                 // cout << "\t- circle(x=" << c.x << " y=" << c.y << " rad=" <<
                 // c.radius << ")\n";
-                rect.x = c.x - c.radius;
-                rect.y = c.y - c.radius;
+                rect.x = c.pos.x - c.radius;
+                rect.y = c.pos.y - c.radius;
                 rect.w = rect.h = c.radius;
-                rect.x -= g_renderstate.panx;
-                rect.y -= g_renderstate.pany;
+                rect.x -= g_renderstate.pan.x;
+                rect.y -= g_renderstate.pan.y;
                 rect.x *= g_renderstate.zoom;
                 rect.y *= g_renderstate.zoom;
                 rect.w *= g_renderstate.zoom;
                 rect.h *= g_renderstate.zoom;
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
                 SDL_SetRenderDrawColor(renderer, c.color.r, c.color.g,
-                                       c.color.b, SDL_ALPHA_OPAQUE);
+                                       c.color.b, min<int>(255, (255.0*c.radius)/5.0));
                 SDL_RenderFillRect(renderer, &rect);
             }
         }
     }
 }
 
-void  draw_grid(SDL_Renderer *renderer) {
+void draw_grid(SDL_Renderer *renderer) {
     const int GRIDSIZE = g_renderstate.zoom * 100;
-    const int STARTY = -1 * (GRIDSIZE + (g_renderstate.pany % GRIDSIZE));
-    const int STARTX = -1 * (GRIDSIZE + (g_renderstate.panx % GRIDSIZE));
+    const int STARTX = -1 * (GRIDSIZE + (g_renderstate.pan.x % GRIDSIZE));
+    const int STARTY = -1 * (GRIDSIZE + (g_renderstate.pan.y % GRIDSIZE));
 
     // set grid color.
     SDL_SetRenderDrawColor(renderer, 170, 170, 170, SDL_ALPHA_OPAQUE);
 
-    for(int x = STARTX; x <= STARTX + SCREEN_WIDTH + GRIDSIZE; x += GRIDSIZE) {
-        SDL_RenderDrawLine(renderer, 
-			 x, STARTY, 
-			 x, STARTY + SCREEN_HEIGHT + 2*GRIDSIZE);
-
+    for (int x = STARTX; x <= STARTX + SCREEN_WIDTH + GRIDSIZE; x += GRIDSIZE) {
+        SDL_RenderDrawLine(renderer, x, STARTY, x,
+                           STARTY + SCREEN_HEIGHT + 2 * GRIDSIZE);
     }
 
-
-    for(int y = STARTY; y <= STARTY + SCREEN_HEIGHT + GRIDSIZE; y += GRIDSIZE) {
-        SDL_RenderDrawLine(renderer, 
-			STARTX, y
-			, STARTX + SCREEN_WIDTH + 2*GRIDSIZE, y);
-        
+    for (int y = STARTY; y <= STARTY + SCREEN_HEIGHT + GRIDSIZE;
+         y += GRIDSIZE) {
+        SDL_RenderDrawLine(renderer, STARTX, y,
+                           STARTX + SCREEN_WIDTH + 2 * GRIDSIZE, y);
     }
-
 };
-
 
 void draw_palette(SDL_Renderer *renderer) {
     // selected palette is drawn slightly higher.
@@ -305,7 +327,7 @@ void draw_palette(SDL_Renderer *renderer) {
         rect.w = PALETTE_WIDTH();
 
         rect.h = (g_colorstate.is_eraser ? SELECTED_PALETTE_HEIGHT
-                                          : PALETTE_HEIGHT());
+                                         : PALETTE_HEIGHT());
         rect.y = SCREEN_HEIGHT - rect.h;
         Color color = Color::RGB(255, 255, 255);  // eraser indicated by white.
         SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
@@ -336,7 +358,6 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
-
 // https://stackoverflow.com/a/3069122/5305365
 // Approximate General Sweep Boundary of a 2D Curved Object,
 // dynadraw: http://www.graficaobscura.com/dyna/dynadraw.c
@@ -357,12 +378,11 @@ int main() {
 
     assert(SCREEN_WIDTH >= 0 && "unable to detect screen width");
     assert(SCREEN_HEIGHT >= 0 && "unable to detect screen height");
-    
 
     // Create a window
-    SDL_Window *window = SDL_CreateWindow("WARD", SDL_WINDOWPOS_UNDEFINED,
-                                          SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH,
-                                          SCREEN_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+    SDL_Window *window = SDL_CreateWindow(
+        "WARD", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH,
+        SCREEN_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if (window == nullptr) {
         SDL_Log("Could not create a window: %s", SDL_GetError());
         return -1;
@@ -385,12 +405,12 @@ int main() {
         return -1;
     }
 
-
     ok = EasyTab_Load(sysinfo.info.x11.display, sysinfo.info.x11.window);
     if (ok != EASYTAB_OK) {
         cerr << "easytab error code: |" << ok << "|\n";
     }
-    assert(ok == EASYTAB_OK && "PLEASE plug in your drawing tablet! [unable to load easytab]");
+    assert(ok == EASYTAB_OK &&
+           "PLEASE plug in your drawing tablet! [unable to load easytab]");
 
     bool g_quit = false;
     while (!g_quit) {
@@ -403,7 +423,8 @@ int main() {
                 break;
             }
 
-            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+            if (event.type == SDL_WINDOWEVENT &&
+                event.window.event == SDL_WINDOWEVENT_RESIZED) {
                 SCREEN_WIDTH = event.window.data1;
                 SCREEN_HEIGHT = event.window.data2;
             }
@@ -450,10 +471,7 @@ int main() {
                     if (g_overviewstate.overviewing) {
                         // if tapped, move to tap location
                         if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
-                            g_renderstate.panx =
-                                g_penstate.x * (1.0 / g_renderstate.zoom);
-                            g_renderstate.pany =
-                                g_penstate.y * (1.0 / g_renderstate.zoom);
+                            g_renderstate.pan = (1.0 / g_renderstate.zoom) * g_penstate;
                             g_renderstate.zoom = 1.0;
                             g_overviewstate.overviewing = false;
                         }
@@ -464,76 +482,98 @@ int main() {
                     }
 
                     if (g_panstate.panning) {
-                        g_renderstate.panx =
-                            g_panstate.startpanx +
-                            PAN_FACTOR * (g_panstate.startx - g_penstate.x);
-                        g_renderstate.pany =
-                            g_panstate.startpany +
-                            PAN_FACTOR * (g_panstate.starty - g_penstate.y);
+                        g_renderstate.pan = g_panstate.startpan + PAN_FACTOR * (g_panstate.startpenpos - g_penstate);
+                        // g_renderstate.pan.x =
+                        //     g_panstate.startpan.x +
+                        //     PAN_FACTOR * (g_panstate.startpenpos.x - g_penstate.x);
+                        // g_renderstate.pany =
+                        //     g_panstate.startpany +
+                        //     PAN_FACTOR * (g_panstate.startpenpos.y - g_penstate.y);
                         g_renderstate.damaged = true;
                         continue;
                     }
 
-                    // not is_down / hovering
-                    if (g_curvestate.is_down &&
+                    // went from down to hovering of pen.
+                    if (g_curvestate.is_down && !g_colorstate.is_eraser &&
                         !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
                         g_curvestate.is_down = false;
                         continue;
                     }
 
-
                     // pressing down, not with eraser.
                     if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) &&
                         !g_colorstate.is_eraser) {
                         if (!g_curvestate.is_down) {
-                            g_curvestate.startx = g_curvestate.prevx =
-                                g_penstate.x + g_renderstate.panx;
-                            g_curvestate.starty = g_curvestate.prevy =
-                                g_penstate.y + g_renderstate.pany;
+                            g_curvestate.start = g_curvestate.prev = g_penstate + g_renderstate.pan;
                             g_curvestate.is_down = true;
                             g_commander.start_new_command();
                         }
 
-                        const int dx = abs(g_penstate.x - g_curvestate.prevx);
-                        const int dy = abs(g_penstate.y - g_curvestate.prevy);
+                        const int dx = abs(g_penstate.x - g_curvestate.prev.x);
+                        const int dy = abs(g_penstate.y - g_curvestate.prev.y);
 
-                        static const int MIN_PEN_RADIUS = 10;
-                        static const int MAX_PEN_RADIUS = 10;
-                        const int radius = int((1. - pressure) * (float)MIN_PEN_RADIUS + pressure * (float)MAX_PEN_RADIUS);
+                        static const int MIN_PEN_RADIUS = 3;
+                        static const int MAX_PEN_RADIUS = 30;
+                        const float t = pressure*pressure*pressure*pressure;
+                        const int radius =
+                            int((1. - t) * (float)MIN_PEN_RADIUS +
+                                t * (float)MAX_PEN_RADIUS);
                         int dlsq = dx * dx + dy * dy;
 
-                        // too close to the previous position, don't create an interpolant.
-                        if (dlsq < radius * radius) { continue; }
+                        // too close to the previous position, don't create an
+                        // interpolant.
+                        if (dlsq < radius * radius) {
+                            continue;
+                        }
 
-                        const int NUM_INTERPOLANTS = min<int>(max<int>(1, sqrt(dlsq)), 10);
-                        for (int k = 0; k <= NUM_INTERPOLANTS; k++) {
-                            int x = lerp(double(k) / NUM_INTERPOLANTS,
-                                         g_curvestate.prevx,
-                                         g_renderstate.panx + g_penstate.x);
-                            int y = lerp(double(k) / NUM_INTERPOLANTS,
-                                         g_curvestate.prevy,
-                                         g_renderstate.pany + g_penstate.y);
-                            const Color color = g_palette[g_colorstate.colorix];
-                            assert(g_max_circle_guid < (1ll << 62) &&
-                                   "too many circles!");
+                        const Vec<int> pos = g_renderstate.pan + g_penstate;
 
-                            // need post ++ for guid, as we need firt guid to be zero
-                            // since we push it  back into a vector.
-                            const Circle circle =
-                                Circle(x, y, radius, color, g_max_circle_guid);
-                            // add circle to the vector to keeps the GUIDs correct.
+                        const Color color = g_palette[g_colorstate.colorix];
+                        assert(g_max_circle_guid < (1ll << 62) && "too many circles!");
+                        const Circle circle =
+                            Circle(pos, radius, color, g_max_circle_guid);
 
-                            // if we don't need this circle, continue, don't add
-                            // it to the command. Such a circle is the price we pay...
-                            // TODO: create code that cleans up such unreferenced circles!
-                            if(add_circle_to_spatial_hash(circle)) {
-                                g_circles.push_back(circle);
-                                g_commander.add_to_command(circle);
-                                g_max_circle_guid++;
-                                g_renderstate.damaged = true;
-                            }                         }
-                        g_curvestate.prevx = g_renderstate.panx + g_penstate.x;
-                        g_curvestate.prevy = g_renderstate.pany + g_penstate.y;
+                        if (add_circle_to_spatial_hash(circle)) {
+                            g_circles.push_back(circle);
+                            g_commander.add_to_command(circle);
+                            g_max_circle_guid++;
+                            g_renderstate.damaged = true;
+                        }
+
+
+                        // const int NUM_INTERPOLANTS =
+                        //     min<int>(max<int>(1, sqrt(dlsq)), 10);
+                        // for (int k = 0; k <= NUM_INTERPOLANTS; k++) {
+                        //     int x = lerp(double(k) / NUM_INTERPOLANTS,
+                        //                  g_curvestate.prevx,
+                        //                  g_renderstate.panx + g_penstate.x);
+                        //     int y = lerp(double(k) / NUM_INTERPOLANTS,
+                        //                  g_curvestate.prevy,
+                        //                  g_renderstate.pany + g_penstate.y);
+                        //     const Color color = g_palette[g_colorstate.colorix];
+                        //     assert(g_max_circle_guid < (1ll << 62) &&
+                        //            "too many circles!");
+
+                        //     // need post ++ for guid, as we need firt guid to be
+                        //     // zero since we push it  back into a vector.
+                        //     const Circle circle =
+                        //         Circle(x, y, radius, color, g_max_circle_guid);
+                        //     // add circle to the vector to keeps the GUIDs
+                        //     // correct.
+
+                        //     // if we don't need this circle, continue, don't add
+                        //     // it to the command. Such a circle is the price we
+                        //     // pay...
+                        //     // TODO: create code that cleans up such
+                        //     // unreferenced circles!
+                        //     if (add_circle_to_spatial_hash(circle)) {
+                        //         g_circles.push_back(circle);
+                        //         g_commander.add_to_command(circle);
+                        //         g_max_circle_guid++;
+                        //         g_renderstate.damaged = true;
+                        //     }
+                        // }
+                        g_curvestate.prev = g_renderstate.pan + g_penstate;
                         continue;
                     }
 
@@ -544,9 +584,10 @@ int main() {
                         if (ix == 0 && !g_colorstate.is_eraser) {
                             g_colorstate.is_eraser = true;
                             g_renderstate.damaged = true;
-                        } 
+                        }
 
-                        if (ix != 0 && (ix-1 != g_colorstate.colorix || g_colorstate.is_eraser)) {
+                        if (ix != 0 && (ix - 1 != g_colorstate.colorix ||
+                                        g_colorstate.is_eraser)) {
                             g_colorstate.is_eraser = false;
                             g_colorstate.colorix = ix - 1;
                             g_renderstate.damaged = true;
@@ -556,17 +597,11 @@ int main() {
                         continue;
                     }
 
-                    // hovering, since we got an event or pressing down, while
-                    // is_eraser.
-                    // pen down with eraser.
 
-                    // not erasing / hovering
-                    if (g_curvestate.is_down && !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
-                        g_curvestate.is_down = false;
-                        continue;
-                    }
 
-                    if (g_colorstate.is_eraser && (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                    // is drawing eraser.
+                    if (g_colorstate.is_eraser &&
+                        (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
                         if (!g_curvestate.is_down) {
                             g_curvestate.is_down = true;
                             g_commander.start_new_command();
@@ -578,9 +613,9 @@ int main() {
                         // ")\n";
 
                         const int startx =
-                            g_renderstate.panx + g_penstate.x - ERASER_RADIUS;
+                            g_renderstate.pan.x + g_penstate.x - ERASER_RADIUS;
                         const int starty =
-                            g_renderstate.pany + g_penstate.y - ERASER_RADIUS;
+                            g_renderstate.pan.y + g_penstate.y - ERASER_RADIUS;
                         const int endx = startx + 2 * ERASER_RADIUS;
                         const int endy = starty + 2 * ERASER_RADIUS;
 
@@ -598,13 +633,10 @@ int main() {
                                 vector<int> to_erase;
                                 for (int cix : bucket) {
                                     Circle &c = g_circles[cix];
-                                    const int dx =
-                                        g_renderstate.panx + g_penstate.x - c.x;
-                                    const int dy =
-                                        g_renderstate.pany + g_penstate.y - c.y;
+                                    const Vec<int> delta = g_renderstate.pan + g_penstate - c.pos;
                                     // eraser has some radius without pressing.
                                     // With pressing, becomes bigger.
-                                    if (dx * dx + dy * dy <=
+                                    if (delta.lensq() <=
                                         ERASER_RADIUS * ERASER_RADIUS) {
                                         to_erase.push_back(cix);
                                         g_commander.add_to_command(c);
@@ -618,26 +650,38 @@ int main() {
                             }
                         }
                     }  // end if(is_eraser )
+
+                    // not erasing / hovering eraser
+                    if (g_curvestate.is_down &&  g_colorstate.is_eraser &&
+                        !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
+                        g_curvestate.is_down = false;
+                        continue;
+                    }
                 }      // end loop over packets
             } else if (event.type == SDL_KEYDOWN) {
                 cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
                      << "\n";
                 if (event.key.keysym.sym == SDLK_q) {
-                    if (g_curvestate.is_down) { continue; }
-                    // undo 
+                    if (g_curvestate.is_down) {
+                        continue;
+                    }
+                    // undo
                     g_renderstate.damaged = true;
                     g_commander.undo();
                 } else if (event.key.keysym.sym == SDLK_w) {
                     // redo
-                    if (g_curvestate.is_down) { continue; }
+                    if (g_curvestate.is_down) {
+                        continue;
+                    }
                     g_renderstate.damaged = true;
                     g_commander.redo();
-                } else if (event.key.keysym.sym == SDLK_e) { 
+                } else if (event.key.keysym.sym == SDLK_e) {
                     // toggle eraser
                     g_renderstate.damaged = true;
                     g_colorstate.is_eraser = !g_colorstate.is_eraser;
                 } else if (event.key.keysym.sym == SDLK_r) {
-                    g_colorstate.colorix = (g_colorstate.colorix + 1) % g_palette.size();
+                    g_colorstate.colorix =
+                        (g_colorstate.colorix + 1) % g_palette.size();
                     g_renderstate.damaged = true;
                 }
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
@@ -652,17 +696,15 @@ int main() {
                             g_overviewstate.overviewing = true;
                             g_renderstate.damaged = true;
                             g_renderstate.zoom = 1.0 / 5;
-                            g_overviewstate.panx = g_renderstate.panx;
-                            g_overviewstate.pany = g_renderstate.pany;
-                            g_renderstate.panx = g_renderstate.pany = 0;
+                            g_overviewstate.pan = g_renderstate.pan;
+                            g_renderstate.pan.x = g_renderstate.pan.y = 0;
                             break;
                         }
                         if (g_overviewstate.overviewing) {
                             g_overviewstate.overviewing = false;
                             g_renderstate.damaged = true;
                             g_renderstate.zoom = 1.0;
-                            g_renderstate.panx = g_overviewstate.panx;
-                            g_renderstate.pany = g_overviewstate.pany;
+                            g_renderstate.pan = g_overviewstate.pan;
                             break;
                         }
                         break;
@@ -672,10 +714,8 @@ int main() {
                         if (!g_overviewstate.overviewing) {
                             g_panstate.panning = true;
                             g_renderstate.damaged = true;
-                            g_panstate.startpanx = g_renderstate.panx;
-                            g_panstate.startpany = g_renderstate.pany;
-                            g_panstate.startx = g_penstate.x;
-                            g_panstate.starty = g_penstate.y;
+                            g_panstate.startpan = g_renderstate.pan;
+                            g_panstate.startpenpos = g_penstate;
                             break;
                         }
                         break;
@@ -685,12 +725,13 @@ int main() {
                 }
                 cerr << "mousedown: |" << button_name << "\n";
             }
-    
-            else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_ENTER) {
-                g_renderstate.damaged = true; // need to repaint when window gains focus
+
+            else if (event.type == SDL_WINDOWEVENT &&
+                     event.window.event == SDL_WINDOWEVENT_ENTER) {
+                g_renderstate.damaged =
+                    true;  // need to repaint when window gains focus
                 continue;
             }
-
 
             else if (event.type == SDL_MOUSEBUTTONUP) {
                 string button_name = "unk";
@@ -729,8 +770,8 @@ int main() {
             g_renderstate.damaged = false;
             Uint8 opaque = 255;
             SDL_SetRenderDrawColor(renderer, g_draw_background_color.r,
-                    g_draw_background_color.g,
-                    g_draw_background_color.b, opaque);
+                                   g_draw_background_color.g,
+                                   g_draw_background_color.b, opaque);
             SDL_RenderClear(renderer);
             draw_grid(renderer);
             draw_pen_strokes(renderer);
@@ -742,18 +783,22 @@ int main() {
 
         const Uint64 end_count = SDL_GetPerformanceCounter();
         const int counts_per_second = SDL_GetPerformanceFrequency();
-        const double elapsedSec = (end_count - start_count) / (double) counts_per_second;
+        const double elapsedSec =
+            (end_count - start_count) / (double)counts_per_second;
         const double elapsedMS = elapsedSec * 1000.0;
         int FPS = 1.0 / elapsedSec;
         const int TARGET_FPS = 60;
         const double timeToNextFrameMs = 1000.0 / TARGET_FPS;
         if (timeToNextFrameMs > elapsedMS) {
             // SDL_Delay(floor(1000.0/TARGET_FPS - elapsedMS));
-            printf("%20s | elapsed time: %4.2f | sleeping for: %4.2f | time to next frame: %4.2f\n", 
-                    (logging_was_damaged ? "DAMAGED" : ""),
-                    elapsedMS, timeToNextFrameMs - elapsedMS, timeToNextFrameMs);
-            // std::cout << "fps: " << FPS << " | elapsed msec: " << elapsedMS << " | time to next frame ms: " << timeToNextFrameMs << "\n";
-            SDL_Delay((timeToNextFrameMs - elapsedMS)); 
+            printf(
+                "%20s | elapsed time: %4.2f | sleeping for: %4.2f | time to "
+                "next frame: %4.2f\n",
+                (logging_was_damaged ? "DAMAGED" : ""), elapsedMS,
+                timeToNextFrameMs - elapsedMS, timeToNextFrameMs);
+            // std::cout << "fps: " << FPS << " | elapsed msec: " << elapsedMS
+            // << " | time to next frame ms: " << timeToNextFrameMs << "\n";
+            SDL_Delay((timeToNextFrameMs - elapsedMS));
         }
     }
 
