@@ -27,7 +27,9 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] quick minimap view to view the entire whiteboard at a glance.
 - [x] Not written using web tech: 530 lines of readable c++ code.
 - [x] grid background
-- [ ] reisizing support.
+- [x] reisizing support.
+- [ ] [Sketchbook style pen smoothing](https://apps.apple.com/in/app/autodesk-sketchbook/id883738213)
+- [ ] [Concepts like pen smoothing](https://concepts.app/en/)
 
 #### shortcuts:
 
