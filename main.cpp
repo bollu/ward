@@ -18,7 +18,6 @@
 using namespace std;
 using namespace std;
 
-
 // 1080p
 int SCREEN_WIDTH = -1;
 int SCREEN_HEIGHT = -1;
@@ -64,39 +63,52 @@ int PALETTE_HEIGHT() { return SCREEN_HEIGHT / 20; }
 // pen lower button: middle
 // pen upper button: right
 
-// TODO: refactor with vec..
-template<typename T>
-struct Vec {
+// TODO: refactor with V2..
+template <typename T>
+struct V2 {
     T x = 0;
     T y = 0;
-    Vec() : x(0), y(0) {};
-    Vec(T x, T y) : x(x), y(y) {};
+    V2() : x(0), y(0){};
+    V2(T x, T y) : x(x), y(y){};
 
-    Vec<T> sub(const Vec<T> & other) const {
-        return Vec(x - other.x, y - other.y);
-    }
+    V2<T> sub(const V2<T> &other) const { return V2(x - other.x, y - other.y); }
 
-    Vec<T> add(const Vec<T> & other) const {
-        return Vec(x + other.x, y + other.y);
-    }
+    V2<T> add(const V2<T> &other) const { return V2(x + other.x, y + other.y); }
 
-    Vec<T> scale(float f) const {
-        return Vec(f*x, f*y);
-    }
+    V2<T> scale(float f) const { return V2(f * x, f * y); }
 
-    T lensq() const {
-        return x*x + y*y;
+    T lensq() const { return x * x + y * y; }
+
+    template <typename O>
+    V2<O> cast() const {
+        return V2<O>(O(x), O(y));
     }
 };
 
-template<typename T>
-Vec<T> operator + (Vec<T> a, Vec<T> b) { return a.add(b); }
+template <typename T>
+V2<T> operator+(V2<T> a, V2<T> b) {
+    return a.add(b);
+}
 
-template<typename T>
-Vec<T> operator - (Vec<T> a, Vec<T> b) { return a.sub(b); }
+template <typename T>
+V2<T> operator-(V2<T> a, V2<T> b) {
+    return a.sub(b);
+}
 
-template<typename T>
-Vec<T> operator * (float f, Vec<T> a) { return a.scale(f); }
+template <typename T>
+V2<T> operator-(V2<T> a) {
+    return V2<T>(-a.x, -a.y);
+}
+
+template <typename T>
+V2<T> operator*(float f, V2<T> a) {
+    return a.scale(f);
+}
+
+template <typename T>
+V2<T> operator*(V2<T> a, float f) {
+    return a.scale(f);
+}
 
 using ll = long long;
 static ll g_max_circle_guid = 0;
@@ -104,54 +116,69 @@ static ll g_max_circle_guid = 0;
 using ll = long long;
 struct Circle {
     ll guid;
-    Vec<int> pos;
+    V2<int> posStart, posEnd;
     int radius;
+    float pressure;
     Color color;
 
-    Circle(Vec<int> pos, int radius, Color color, ll guid)
-        : pos(pos), radius(radius), color(color), guid(guid) {}
+    V2<int> pos() const {
+        return 0.5 * (posStart + posEnd);
+    }
+
+    Circle(V2<int> posStart, V2<int> posEnd, int radius, float pressure,
+           Color color, ll guid)
+        : posStart(posStart),
+          posEnd(posEnd),
+          radius(radius),
+          pressure(pressure),
+          color(color),
+          guid(guid) {}
 };
 
 struct CurveState {
-    Vec<int> start;
-    Vec<int> prev;
+    V2<int> start;
+    // ringbuffer
+    static const int NPREV = 5;
+    V2<int> prev[NPREV];
+    int prevLen = 0;
+    bool prevFilled = false;
+
     bool is_down = false;
 } g_curvestate;
 
-Vec<int> g_penstate;
+V2<int> g_penstate;
 
 struct PanState {
     bool panning = false;
-    Vec<int> startpan;
-    Vec<int> startpenpos;
+    V2<int> startpan;
+    V2<int> startpenpos;
 } g_panstate;
 
 struct ColorState {
-    Vec<int> startpick;
+    V2<int> startpick;
     int colorix = 0;
     bool is_eraser;
 } g_colorstate;
 
 struct OverviewState {
     bool overviewing = false;
-    Vec<int> pan;
+    V2<int> pan;
 } g_overviewstate;
 
 struct RenderState {
     float zoom = 1;
-    Vec<int> pan = Vec<int>(SCREEN_WIDTH*2, SCREEN_HEIGHT*2);
+    V2<int> pan = V2<int>(SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2);
     bool damaged = true;
 } g_renderstate;
 
 std::vector<Circle> g_circles;
 
 // catmull rom spline
-template<typename T>
+template <typename T>
 T catmullrom(T p0, T p1, T p2, T p3, float t) {
-    return 0.5 * ((2 * p1) + 
-            (-p0 + p2)  * t +
-            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
-            (-p0 + 3*p1- 3*p2 + p3) * t * t * t);
+    return 0.5 * ((2 * p1) + (-p0 + p2) * t +
+                  (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+                  (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
 };
 
 // dubious has concatenation from stack overflow:
@@ -169,15 +196,15 @@ unordered_map<pair<int, int>, unordered_set<int>, hash_pair_int> g_spatial_hash;
 
 // returns if circle was really added.
 bool add_circle_to_spatial_hash(const Circle &c) {
-    int sx = c.pos.x / SPATIAL_HASH_CELL_SIZE;
-    int sy = c.pos.y / SPATIAL_HASH_CELL_SIZE;
+    int sx = c.pos().x / SPATIAL_HASH_CELL_SIZE;
+    int sy = c.pos().y / SPATIAL_HASH_CELL_SIZE;
     // TODO: treat circles as rects, not points.
     unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
 
     // this is already covered.
     for (int ix : bucket) {
         const Circle &d = g_circles[ix];
-        Vec<int> delta = c.pos - d.pos;
+        V2<int> delta = c.pos() - d.pos();
         // int dx = c.pos.x - d.x;
         // int dy = c.pos.y - d.y;
         // int dlsq = dx * dx + dy * dy;
@@ -192,8 +219,8 @@ bool add_circle_to_spatial_hash(const Circle &c) {
 void run_command(vector<int> &cmd) {
     for (const int cix : cmd) {
         const Circle &c = g_circles[cix];
-        const int sx = c.pos.x / SPATIAL_HASH_CELL_SIZE;
-        const int sy = c.pos.y / SPATIAL_HASH_CELL_SIZE;
+        const int sx = c.pos().x / SPATIAL_HASH_CELL_SIZE;
+        const int sy = c.pos().y / SPATIAL_HASH_CELL_SIZE;
         std::unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
         if (bucket.count(cix)) {
             bucket.erase(cix);
@@ -273,24 +300,28 @@ void draw_pen_strokes(SDL_Renderer *renderer) {
             }
 
             unordered_set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
-            SDL_Rect rect;
+            // SDL_Rect rect;
             for (int cix : bucket) {
                 const Circle &c = g_circles[cix];
                 // cout << "\t- circle(x=" << c.x << " y=" << c.y << " rad=" <<
                 // c.radius << ")\n";
-                rect.x = c.pos.x - c.radius;
-                rect.y = c.pos.y - c.radius;
-                rect.w = rect.h = c.radius;
-                rect.x -= g_renderstate.pan.x;
-                rect.y -= g_renderstate.pan.y;
-                rect.x *= g_renderstate.zoom;
-                rect.y *= g_renderstate.zoom;
-                rect.w *= g_renderstate.zoom;
-                rect.h *= g_renderstate.zoom;
+                // rect.x = c.pos.x - c.radius;
+                // rect.y = c.pos.y - c.radius;
+                // rect.w = rect.h = c.radius;
+                // rect.x -= g_renderstate.pan.x;
+                // rect.y -= g_renderstate.pan.y;
+                // rect.x *= g_renderstate.zoom;
+                // rect.y *= g_renderstate.zoom;
+                // rect.w *= g_renderstate.zoom;
+                // rect.h *= g_renderstate.zoom;
                 SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
                 SDL_SetRenderDrawColor(renderer, c.color.r, c.color.g,
-                                       c.color.b, min<int>(255, (255.0*c.radius)/5.0));
-                SDL_RenderFillRect(renderer, &rect);
+                                       c.color.b, 255);
+                V2<int> s = g_renderstate.zoom * (c.posStart - g_renderstate.pan);
+                V2<int> t = g_renderstate.zoom * (c.posEnd - g_renderstate.pan);
+                SDL_RenderDrawLine(renderer, s.x, s.y,
+                        t.x, t.y);
+                // SDL_RenderFillRect(renderer, &rect);
             }
         }
     }
@@ -471,7 +502,8 @@ int main() {
                     if (g_overviewstate.overviewing) {
                         // if tapped, move to tap location
                         if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
-                            g_renderstate.pan = (1.0 / g_renderstate.zoom) * g_penstate;
+                            g_renderstate.pan =
+                                (1.0 / g_renderstate.zoom) * g_penstate;
                             g_renderstate.zoom = 1.0;
                             g_overviewstate.overviewing = false;
                         }
@@ -482,13 +514,17 @@ int main() {
                     }
 
                     if (g_panstate.panning) {
-                        g_renderstate.pan = g_panstate.startpan + PAN_FACTOR * (g_panstate.startpenpos - g_penstate);
+                        g_renderstate.pan =
+                            g_panstate.startpan +
+                            PAN_FACTOR * (g_panstate.startpenpos - g_penstate);
                         // g_renderstate.pan.x =
                         //     g_panstate.startpan.x +
-                        //     PAN_FACTOR * (g_panstate.startpenpos.x - g_penstate.x);
+                        //     PAN_FACTOR * (g_panstate.startpenpos.x -
+                        //     g_penstate.x);
                         // g_renderstate.pany =
                         //     g_panstate.startpany +
-                        //     PAN_FACTOR * (g_panstate.startpenpos.y - g_penstate.y);
+                        //     PAN_FACTOR * (g_panstate.startpenpos.y -
+                        //     g_penstate.y);
                         g_renderstate.damaged = true;
                         continue;
                     }
@@ -504,42 +540,80 @@ int main() {
                     if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) &&
                         !g_colorstate.is_eraser) {
                         if (!g_curvestate.is_down) {
-                            g_curvestate.start = g_curvestate.prev = g_penstate + g_renderstate.pan;
+                            g_curvestate.start = g_penstate + g_renderstate.pan;
                             g_curvestate.is_down = true;
                             g_commander.start_new_command();
+                            g_curvestate.prevFilled = false;
+                            g_curvestate.prevLen = 0;
                         }
 
-                        const int dx = abs(g_penstate.x - g_curvestate.prev.x);
-                        const int dy = abs(g_penstate.y - g_curvestate.prev.y);
+                        // const int dx = abs(g_penstate.x -
+                        // g_curvestate.prev.x); const int dy = abs(g_penstate.y
+                        // - g_curvestate.prev.y);
 
-                        static const int MIN_PEN_RADIUS = 3;
-                        static const int MAX_PEN_RADIUS = 30;
-                        const float t = pressure*pressure*pressure*pressure;
+                        static const int MIN_PEN_RADIUS = 10;
+                        static const int MAX_PEN_RADIUS = 10;
+                        const float t = pressure * pressure;
                         const int radius =
                             int((1. - t) * (float)MIN_PEN_RADIUS +
                                 t * (float)MAX_PEN_RADIUS);
-                        int dlsq = dx * dx + dy * dy;
+                        // int dlsq = dx * dx + dy * dy;
 
                         // too close to the previous position, don't create an
                         // interpolant.
-                        if (dlsq < radius * radius) {
-                            continue;
+                        // if (dlsq < radius * radius) {
+                        //     continue;
+                        // }
+
+                        const V2<int> pos = g_renderstate.pan + g_penstate;
+
+                        g_curvestate.prev[g_curvestate.prevLen] =
+                            g_renderstate.pan + g_penstate;
+                        g_curvestate.prevLen++;
+                        if (g_curvestate.prevLen >= CurveState::NPREV) {
+                            g_curvestate.prevFilled = true;
+                            g_curvestate.prevLen = 0;
                         }
 
-                        const Vec<int> pos = g_renderstate.pan + g_penstate;
+                        if (g_curvestate.prevFilled) {
+                            int tip = CurveState::NPREV + g_curvestate.prevLen;
+                            V2<float> p0 =
+                                g_curvestate.prev[(tip - 1) % CurveState::NPREV]
+                                    .cast<float>();
+                            V2<float> p1 =
+                                g_curvestate.prev[(tip - 2) % CurveState::NPREV]
+                                    .cast<float>();
+                            V2<float> p2 =
+                                g_curvestate.prev[(tip - 3) % CurveState::NPREV]
+                                    .cast<float>();
+                            V2<float> p3 =
+                                g_curvestate.prev[(tip - 4) % CurveState::NPREV]
+                                    .cast<float>();
 
-                        const Color color = g_palette[g_colorstate.colorix];
-                        assert(g_max_circle_guid < (1ll << 62) && "too many circles!");
-                        const Circle circle =
-                            Circle(pos, radius, color, g_max_circle_guid);
+                            const int NUM_INTERPOLANTS = 1;
+                            for (int k = 0; k < NUM_INTERPOLANTS; ++k) {
+                                V2<float> posStart = catmullrom<V2<float>>(
+                                    p0, p1, p2, p3,
+                                    (float)k / (float)NUM_INTERPOLANTS);
+                                V2<float> posEnd = catmullrom<V2<float>>(
+                                    p0, p1, p2, p3,
+                                    (float)(k +1) / (float)NUM_INTERPOLANTS);
+                                const Color color =
+                                    g_palette[g_colorstate.colorix];
+                                assert(g_max_circle_guid < (1ll << 62) &&
+                                       "too many circles!");
+                                const Circle circle =
+                                    Circle(posStart.cast<int>(), posEnd.cast<int>(), radius, pressure,
+                                           color, g_max_circle_guid);
 
-                        if (add_circle_to_spatial_hash(circle)) {
-                            g_circles.push_back(circle);
-                            g_commander.add_to_command(circle);
-                            g_max_circle_guid++;
-                            g_renderstate.damaged = true;
+                                if (add_circle_to_spatial_hash(circle)) {
+                                    g_circles.push_back(circle);
+                                    g_commander.add_to_command(circle);
+                                    g_max_circle_guid++;
+                                    g_renderstate.damaged = true;
+                                }
+                            }
                         }
-
 
                         // const int NUM_INTERPOLANTS =
                         //     min<int>(max<int>(1, sqrt(dlsq)), 10);
@@ -550,19 +624,24 @@ int main() {
                         //     int y = lerp(double(k) / NUM_INTERPOLANTS,
                         //                  g_curvestate.prevy,
                         //                  g_renderstate.pany + g_penstate.y);
-                        //     const Color color = g_palette[g_colorstate.colorix];
+                        //     const Color color =
+                        //     g_palette[g_colorstate.colorix];
                         //     assert(g_max_circle_guid < (1ll << 62) &&
                         //            "too many circles!");
 
-                        //     // need post ++ for guid, as we need firt guid to be
+                        //     // need post ++ for guid, as we need firt guid to
+                        //     be
                         //     // zero since we push it  back into a vector.
                         //     const Circle circle =
-                        //         Circle(x, y, radius, color, g_max_circle_guid);
+                        //         Circle(x, y, radius, color,
+                        //         g_max_circle_guid);
                         //     // add circle to the vector to keeps the GUIDs
                         //     // correct.
 
-                        //     // if we don't need this circle, continue, don't add
-                        //     // it to the command. Such a circle is the price we
+                        //     // if we don't need this circle, continue, don't
+                        //     add
+                        //     // it to the command. Such a circle is the price
+                        //     we
                         //     // pay...
                         //     // TODO: create code that cleans up such
                         //     // unreferenced circles!
@@ -573,7 +652,6 @@ int main() {
                         //         g_renderstate.damaged = true;
                         //     }
                         // }
-                        g_curvestate.prev = g_renderstate.pan + g_penstate;
                         continue;
                     }
 
@@ -596,8 +674,6 @@ int main() {
                         assert(g_colorstate.colorix < g_palette.size());
                         continue;
                     }
-
-
 
                     // is drawing eraser.
                     if (g_colorstate.is_eraser &&
@@ -633,7 +709,8 @@ int main() {
                                 vector<int> to_erase;
                                 for (int cix : bucket) {
                                     Circle &c = g_circles[cix];
-                                    const Vec<int> delta = g_renderstate.pan + g_penstate - c.pos;
+                                    const V2<int> delta =
+                                        g_renderstate.pan + g_penstate - c.pos();
                                     // eraser has some radius without pressing.
                                     // With pressing, becomes bigger.
                                     if (delta.lensq() <=
@@ -652,12 +729,12 @@ int main() {
                     }  // end if(is_eraser )
 
                     // not erasing / hovering eraser
-                    if (g_curvestate.is_down &&  g_colorstate.is_eraser &&
+                    if (g_curvestate.is_down && g_colorstate.is_eraser &&
                         !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
                         g_curvestate.is_down = false;
                         continue;
                     }
-                }      // end loop over packets
+                }  // end loop over packets
             } else if (event.type == SDL_KEYDOWN) {
                 cerr << "keydown: " << SDL_GetKeyName(event.key.keysym.sym)
                      << "\n";
