@@ -22,6 +22,10 @@ using namespace std;
 // CONFIG
 static const int MIN_PEN_RADIUS = 5;
 static const int MAX_PEN_RADIUS = 10;
+
+static const int MIN_ERASER_RADIUS = 30;
+static const int MAX_ERASER_RADIUS = 100;
+
 const int GRID_BASE_SIZE = 100;
 
 // 1080p
@@ -173,7 +177,8 @@ struct PanState {
 struct ColorState {
     V2<int> startpick;
     int colorix = 0;
-    bool is_eraser;
+    bool is_eraser = false;
+    int eraser_radius; // radius of the eraser based on pressure.
 } g_colorstate;
 
 struct OverviewState {
@@ -320,6 +325,7 @@ void draw_pen_strokes_cr(cairo_t *cr) {
     const int endx = zoominv * (startx + SCREEN_WIDTH);
     const int endy = zoominv * (starty + SCREEN_HEIGHT);
 
+    cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
     cairo_set_line_cap (cr, cairo_line_cap_t::CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join (cr, cairo_line_join_t::CAIRO_LINE_JOIN_ROUND);
     // https://www.cairographics.org/operators/
@@ -356,6 +362,19 @@ void draw_pen_strokes_cr(cairo_t *cr) {
 	}
     }
 }
+
+void draw_eraser_cr(cairo_t *cr) {
+    if (!g_colorstate.is_eraser) { return; }
+    const V2<float> pos = g_renderstate.zoom * (g_penstate - g_renderstate.pan).cast<float>();
+    const float radius = g_colorstate.eraser_radius * g_renderstate.zoom;
+    
+    cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_OVER);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.8); // eraser is white.
+    cairo_arc(cr, pos.x, pos.y, radius, 0, 2.0 * M_PI);
+    cairo_fill (cr);
+
+}
+
 
 // TODO: overview mode is very sluggish :(
 void draw_pen_strokes(SDL_Renderer *renderer) {
@@ -408,6 +427,7 @@ void draw_grid_cr(cairo_t *cr) {
     // set grid color.
 
     static const int GRID_LINE_WIDTH = 2;
+    cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
     cairo_set_line_width(cr, GRID_LINE_WIDTH);
     cairo_set_source_rgba(cr, 170. / 255.0, 170. / 255.0, 170. / 255.0, 1.0);
 
@@ -813,18 +833,15 @@ int main() {
 			    g_curvestate.is_down = true;
 			    g_commander.start_new_command();
 			}
-			const int ERASER_RADIUS =
-			    30 + (EasyTab->Pressure[p] * 100);
-			// std::cerr << "is_eraser (radius=" << ERASER_RADIUS
-			// <<
-			// ")\n";
+            
+			g_colorstate.eraser_radius  = MIN_ERASER_RADIUS + (EasyTab->Pressure[p] * (MAX_ERASER_RADIUS - MIN_ERASER_RADIUS));
 
 			const int startx =
-			    g_renderstate.pan.x + g_penstate.x - ERASER_RADIUS;
+			    g_renderstate.pan.x + g_penstate.x - g_colorstate.eraser_radius;
 			const int starty =
-			    g_renderstate.pan.y + g_penstate.y - ERASER_RADIUS;
-			const int endx = startx + 2 * ERASER_RADIUS;
-			const int endy = starty + 2 * ERASER_RADIUS;
+			    g_renderstate.pan.y + g_penstate.y - g_colorstate.eraser_radius;
+			const int endx = startx + 2 * g_colorstate.eraser_radius;
+			const int endy = starty + 2 * g_colorstate.eraser_radius;
 
 			for (int xix = startx / SPATIAL_HASH_CELL_SIZE - 1;
 			     xix <= endx / SPATIAL_HASH_CELL_SIZE + 1; ++xix) {
@@ -844,8 +861,7 @@ int main() {
 							  g_penstate - c.pos();
 				    // eraser has some radius without pressing.
 				    // With pressing, becomes bigger.
-				    if (delta.lensq() <=
-					ERASER_RADIUS * ERASER_RADIUS) {
+				    if (delta.lensq() <= g_colorstate.eraser_radius * g_colorstate.eraser_radius) {
 					to_erase.push_back(cix);
 					g_commander.add_to_command(c);
 					g_renderstate.damaged = true;
@@ -972,6 +988,8 @@ int main() {
 	    }
 	}
 
+    // eraser always damages because we need to redraw eraser circle.
+    g_renderstate.damaged |= g_colorstate.is_eraser;
 	// for logging into the console.
 	const bool logging_was_damaged = g_renderstate.damaged;
 	if (g_renderstate.damaged) {
@@ -989,8 +1007,10 @@ int main() {
 
         draw_grid_cr(cr);
 	    draw_pen_strokes_cr(cr);
+        draw_eraser_cr(cr);
         SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, sdl_surface);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
+
 
 	    // draw_grid(renderer);
 	    // draw_pen_strokes(renderer);
