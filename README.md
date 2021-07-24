@@ -30,6 +30,9 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] reisizing support.
 - [ ] [Sketchbook style pen smoothing](https://apps.apple.com/in/app/autodesk-sketchbook/id883738213)
 - [ ] [Concepts like pen smoothing](https://concepts.app/en/)
+- [ ] [use SDF to draw smooth splines](https://www.shadertoy.com/view/MlfSRN)
+- [ ] [Blend2D for curve drawing](https://gist.github.com/kobalicek/53075d227f08ba068d84fc8bfeff274b)
+- [ ] [Pixel shader](https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-25-rendering-vector-art-gpu)
 
 #### shortcuts:
 

@@ -4,7 +4,7 @@ project('ward', 'cpp',
 
 cxx = meson.get_compiler('cpp')
 xinput_lib = cxx.find_library('Xi')
-deps = [dependency('sdl2'), dependency('X11'), xinput_lib]
+deps = [dependency('cairo'), dependency('sdl2'), dependency('X11'), xinput_lib]
 executable('ward',
            'main.cpp',
            dependencies: deps,
