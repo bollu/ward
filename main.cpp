@@ -832,11 +832,8 @@ int main() {
     const Uint64 start_count = SDL_GetPerformanceCounter();
     // Get the next event
     SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-      bool should_quit = handle_event(event);
-      if (should_quit) {
-        break;
-      }
+    while (!g_quit && SDL_PollEvent(&event)) {
+      g_quit = handle_event(event);
     }
 
     // eraser always damages because we need to redraw eraser circle.
