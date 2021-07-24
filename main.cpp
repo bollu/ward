@@ -1,3 +1,4 @@
+#include <SDL_surface.h>
 #include <iostream>
 #define EASYTAB_IMPLEMENTATION
 #include <SDL2/SDL.h>
@@ -516,6 +517,15 @@ cairo_t *g_cr = nullptr;
 
 
 void cairo_setup_surface() {
+    if (g_sdl_surface) { 
+        SDL_FreeSurface(g_sdl_surface);
+        assert(g_cr_surface);
+        cairo_surface_destroy(g_cr_surface);
+        assert(g_cr);
+        cairo_destroy(g_cr);
+
+    }
+
     g_sdl_surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32, 0x00ff0000,
             0x0000ff00, 0x000000ff, 0);
     g_cr_surface = cairo_image_surface_create_for_data( (unsigned char
