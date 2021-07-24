@@ -28,11 +28,11 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] Not written using web tech: 530 lines of readable c++ code.
 - [x] grid background
 - [x] reisizing support.
-- [ ] [Sketchbook style pen smoothing](https://apps.apple.com/in/app/autodesk-sketchbook/id883738213)
 - [ ] [Concepts like pen smoothing](https://concepts.app/en/)
-- [ ] [use SDF to draw smooth splines](https://www.shadertoy.com/view/MlfSRN)
-- [ ] [Blend2D for curve drawing](https://gist.github.com/kobalicek/53075d227f08ba068d84fc8bfeff274b)
-- [ ] [Pixel shader](https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-25-rendering-vector-art-gpu)
+
+#### bugs
+- See why eraser does not work properly.
+- Handle window quit event.
 
 #### shortcuts:
 
@@ -42,14 +42,15 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - `R`: `R` otate to next color.
 - lower wacom button + drag: pan.
 - upper wacom button: toggle overview. Tap to move to a location in the overview.
-- Color selection: hover pointer over color in color palette.
-- Eraser selection: hover pointer over eraser in color palette.
+- Color selection: hover pointer over color in color pot in color palette at bottom row.
+- Eraser selection: hover pointer over eraser in color palette at bottom left.
 
 The code uses:
 
 - the [EasyTab](https://github.com/ApoorvaJ/EasyTab) library to work with Wacom tablets.
 - The [Milton project](https://github.com/serge-rgb/milton) as heavy reference on how to work with tablets.
 - [SDL2](https://www.libsdl.org/) for rendering.
+- [Cairo](https://www.cairographics.org/manual/cairo-cairo-t.html) for anti aliased vector graphics.
 - [Spatial hashing](http://www.cs.ucf.edu/~jmesit/publications/scsc%202005.pdf) to quickly add and delete brush strokes.
 - Lazy repainting of the entire frame upon change..
 
