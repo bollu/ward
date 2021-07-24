@@ -178,7 +178,7 @@ struct ColorState {
     V2<int> startpick;
     int colorix = 0;
     bool is_eraser = false;
-    int eraser_radius; // radius of the eraser based on pressure.
+    int eraser_radius = -1; // radius of the eraser based on pressure.
 } g_colorstate;
 
 struct OverviewState {
@@ -366,6 +366,7 @@ void draw_pen_strokes_cr(cairo_t *cr) {
 void draw_eraser_cr(cairo_t *cr) {
     if (!g_colorstate.is_eraser) { return; }
     const V2<float> pos = g_renderstate.zoom * (g_penstate - g_renderstate.pan).cast<float>();
+    assert(g_colorstate.eraser_radius >= 0);
     const float radius = g_colorstate.eraser_radius * g_renderstate.zoom;
     
     cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_OVER);
@@ -812,6 +813,7 @@ int main() {
 			int ix = g_penstate.x / PALETTE_WIDTH();
 			if (ix == 0 && !g_colorstate.is_eraser) {
 			    g_colorstate.is_eraser = true;
+                g_colorstate.eraser_radius = MIN_ERASER_RADIUS;
 			    g_renderstate.damaged = true;
 			}
 
@@ -819,6 +821,7 @@ int main() {
 					g_colorstate.is_eraser)) {
 			    g_colorstate.is_eraser = false;
 			    g_colorstate.colorix = ix - 1;
+                g_colorstate.eraser_radius = -1;
 			    g_renderstate.damaged = true;
 			}
 			assert(g_colorstate.colorix >= 0);
@@ -903,6 +906,7 @@ int main() {
 		    // toggle eraser
 		    g_renderstate.damaged = true;
 		    g_colorstate.is_eraser = !g_colorstate.is_eraser;
+            g_colorstate.eraser_radius = g_colorstate.is_eraser ? MIN_ERASER_RADIUS : -1;
 		} else if (event.key.keysym.sym == SDLK_r) {
 		    g_colorstate.colorix =
 			(g_colorstate.colorix + 1) % g_palette.size();
@@ -964,13 +968,6 @@ int main() {
 			button_name = "left";
 			break;
 		    case SDL_BUTTON_RIGHT:
-			// if (g_overviewstate.overviewing) {
-			//     g_panstate.panning = false;
-			//     g_renderstate.zoom = 1.0;
-			//     g_renderstate.panx = g_overviewstate.panx;
-			//     g_renderstate.pany = g_overviewstate.pany;
-			//     break;
-			// }
 			break;
 		    case SDL_BUTTON_MIDDLE:
 			button_name = "middle";
