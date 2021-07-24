@@ -509,6 +509,26 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
+
+SDL_Surface *g_sdl_surface = nullptr;
+cairo_surface_t *g_cr_surface = nullptr;
+cairo_t *g_cr = nullptr; 
+
+
+void cairo_setup_surface() {
+    g_sdl_surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32, 0x00ff0000,
+            0x0000ff00, 0x000000ff, 0);
+    g_cr_surface = cairo_image_surface_create_for_data( (unsigned char
+                *)g_sdl_surface->pixels, CAIRO_FORMAT_RGB24, SCREEN_WIDTH,
+            SCREEN_HEIGHT, g_sdl_surface->pitch);
+    cairo_surface_set_device_scale(g_cr_surface, 1, 1);
+    g_cr = cairo_create(g_cr_surface);
+
+
+}
+
+
+
 // https://stackoverflow.com/a/3069122/5305365
 // Approximate General Sweep Boundary of a 2D Curved Object,
 // dynadraw: http://www.graficaobscura.com/dyna/dynadraw.c
@@ -557,17 +577,7 @@ int main() {
     }
 
     // https://github.com/tsuu32/sdl2-cairo-example/blob/16a1eb41d649e1be72e9cb51860017d01b38af5e/sdl2-cairo.c
-    SDL_Surface *sdl_surface = nullptr;
-    cairo_surface_t *cr_surface = nullptr;
-    cairo_t *cr = nullptr; // HACK: MEMORY LEAK!
-
-	sdl_surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32, 0x00ff0000,
-			     0x0000ff00, 0x000000ff, 0);
-    cr_surface = cairo_image_surface_create_for_data( (unsigned char
-                *)sdl_surface->pixels, CAIRO_FORMAT_RGB24, SCREEN_WIDTH,
-            SCREEN_HEIGHT, sdl_surface->pitch);
-    cairo_surface_set_device_scale(cr_surface, 1, 1);
-    cr = cairo_create(cr_surface);
+    cairo_setup_surface();
 
 
 
@@ -593,13 +603,7 @@ int main() {
 		event.window.event == SDL_WINDOWEVENT_RESIZED) {
 		SCREEN_WIDTH = event.window.data1;
 		SCREEN_HEIGHT = event.window.data2;
-        sdl_surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32, 0x00ff0000,
-                0x0000ff00, 0x000000ff, 0);
-        cr_surface = cairo_image_surface_create_for_data( (unsigned char
-                    *)sdl_surface->pixels, CAIRO_FORMAT_RGB24, SCREEN_WIDTH,
-                SCREEN_HEIGHT, sdl_surface->pitch);
-        cairo_surface_set_device_scale(cr_surface, 1, 1);
-        cr = cairo_create(cr_surface);
+        cairo_setup_surface();
 	    }
 
 	    else if (event.type == SDL_SYSWMEVENT) {
@@ -997,16 +1001,17 @@ int main() {
 		// 		   g_draw_background_color.b, opaque);
 	    // SDL_RenderClear(renderer);
 
-        cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-        cairo_set_source_rgba(cr, 0.9, 0.9, 0.9, 1.0);
-        cairo_rectangle(cr, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-        cairo_fill(cr);
+        cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+        cairo_set_source_rgba(g_cr, 0.9, 0.9, 0.9, 1.0);
+        cairo_rectangle(g_cr, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        cairo_fill(g_cr);
 
-        draw_grid_cr(cr);
-	    draw_pen_strokes_cr(cr);
-        draw_eraser_cr(cr);
-        SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, sdl_surface);
+        draw_grid_cr(g_cr);
+	    draw_pen_strokes_cr(g_cr);
+        draw_eraser_cr(g_cr);
+        SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, g_sdl_surface);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
+
 
 
 	    // draw_grid(renderer);
@@ -1015,6 +1020,8 @@ int main() {
             draw_palette(renderer);
 	    }
 	    SDL_RenderPresent(renderer);
+        SDL_DestroyTexture(texture);
+
 	}
 
 	const Uint64 end_count = SDL_GetPerformanceCounter();
