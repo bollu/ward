@@ -22,6 +22,7 @@ using namespace std;
 // CONFIG
 static const int MIN_PEN_RADIUS = 5;
 static const int MAX_PEN_RADIUS = 10;
+const int GRID_BASE_SIZE = 100;
 
 // 1080p
 int SCREEN_WIDTH = -1;
@@ -398,6 +399,32 @@ void draw_pen_strokes(SDL_Renderer *renderer) {
 	}
     }
 }
+
+void draw_grid_cr(cairo_t *cr) {
+    const int GRIDSIZE = g_renderstate.zoom * GRID_BASE_SIZE;
+    const int STARTX = -1 * (GRIDSIZE + (g_renderstate.pan.x % GRIDSIZE));
+    const int STARTY = -1 * (GRIDSIZE + (g_renderstate.pan.y % GRIDSIZE));
+
+    // set grid color.
+
+    static const int GRID_LINE_WIDTH = 2;
+    cairo_set_line_width(cr, GRID_LINE_WIDTH);
+    cairo_set_source_rgba(cr, 170. / 255.0, 170. / 255.0, 170. / 255.0, 1.0);
+
+    for (int x = STARTX; x <= STARTX + SCREEN_WIDTH + GRIDSIZE; x += GRIDSIZE) {
+        cairo_move_to(cr, x, STARTY);
+        cairo_line_to(cr, x, STARTY + SCREEN_HEIGHT + 2*GRIDSIZE);
+        cairo_stroke(cr);
+    }
+
+    for (int y = STARTY; y <= STARTY + SCREEN_HEIGHT + GRIDSIZE;
+	 y += GRIDSIZE) {
+        cairo_move_to(cr, STARTX, y);
+        cairo_line_to(cr, STARTX + SCREEN_WIDTH + 2 *GRIDSIZE, y);
+        cairo_stroke(cr);
+    }
+};
+
 
 void draw_grid(SDL_Renderer *renderer) {
     const int GRIDSIZE = g_renderstate.zoom * 100;
@@ -960,6 +987,7 @@ int main() {
         cairo_rectangle(cr, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
         cairo_fill(cr);
 
+        draw_grid_cr(cr);
 	    draw_pen_strokes_cr(cr);
         SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, sdl_surface);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
