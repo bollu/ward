@@ -113,7 +113,6 @@ static ll g_max_circle_guid = 0;
 using ll = long long;
 struct Circle {
   ll guid;
-  V2<int> posPrevEnd, posNextStart;
   V2<int> posStart, posEnd;
   int radius;
   float pressure;
@@ -121,22 +120,17 @@ struct Circle {
 
   V2<int> pos() const { return 0.5 * (posStart + posEnd); }
 
-  Circle(V2<int> posPrevEnd, V2<int> posStart, V2<int> posEnd,
-         V2<int> posNextStart, int radius, float pressure, Color color, ll guid)
-      : posPrevEnd(posPrevEnd), posStart(posStart), posEnd(posEnd),
-        posNextStart(posNextStart), radius(radius), pressure(pressure),
+  Circle(V2<int> posStart, V2<int> posEnd, int radius, float pressure,
+         Color color, ll guid)
+      : posStart(posStart), posEnd(posEnd), radius(radius), pressure(pressure),
         color(color), guid(guid) {}
 };
 
 struct CurveState {
   V2<int> start;
-  // ringbuffer
-  static const int NPREV = 5;
-  V2<int> prev[NPREV];
-  int prevLen = 0;
-  bool prevFilled = false;
-
   bool is_down = false;
+  bool filled = false;
+  V2<int> prev;
 } g_curvestate;
 
 V2<int> g_penstate;
@@ -523,51 +517,35 @@ void handle_packet(int p) {
     if (!g_curvestate.is_down) {
       g_curvestate.start = g_penstate + g_renderstate.pan;
       g_curvestate.is_down = true;
+      g_curvestate.filled = false;
       g_commander.start_new_command();
-      g_curvestate.prevFilled = false;
-      g_curvestate.prevLen = 0;
     }
 
     const float t = pressure * pressure;
     const int radius =
         int((1. - t) * (float)MIN_PEN_RADIUS + t * (float)MAX_PEN_RADIUS);
 
-    const V2<int> pos = g_renderstate.pan + g_penstate;
+    const V2<int> cur = g_renderstate.pan + g_penstate;
+    if (!g_curvestate.filled) {
+      g_curvestate.prev = cur;
+      g_curvestate.filled = true;
+      return;
+    } else {
 
-    if (g_curvestate.prevFilled ||
-        (!g_curvestate.prevFilled && g_curvestate.prevLen >= 1)) {
-      int tip = CurveState::NPREV + g_curvestate.prevLen;
-      const V2<int> prev = g_curvestate.prev[(tip - 1) % CurveState::NPREV];
-    }
+      const V2<int> prev = g_curvestate.prev;
+      g_curvestate.prev = cur;
 
-    g_curvestate.prev[g_curvestate.prevLen] = g_renderstate.pan + g_penstate;
-    g_curvestate.prevLen++;
-
-    if (g_curvestate.prevLen >= CurveState::NPREV) {
-      g_curvestate.prevFilled = true;
-      g_curvestate.prevLen = 0;
-    }
-
-    // we don't have enough points, give up.
-    if (!g_curvestate.prevFilled) {
+      const Color color = g_palette[g_colorstate.colorix];
+      const Circle circle(prev, cur, radius, pressure, color,
+                          g_max_circle_guid);
+      if (add_circle_to_spatial_hash(circle)) {
+        g_circles.push_back(circle);
+        g_commander.add_to_command(circle);
+        g_max_circle_guid++;
+        g_renderstate.damaged = true;
+      }
       return;
     }
-    const int tip = CurveState::NPREV + g_curvestate.prevLen;
-    const V2<int> p0 = g_curvestate.prev[(tip - 1) % CurveState::NPREV];
-    const V2<int> p1 = g_curvestate.prev[(tip - 2) % CurveState::NPREV];
-    const V2<int> p2 = g_curvestate.prev[(tip - 3) % CurveState::NPREV];
-    const V2<int> p3 = g_curvestate.prev[(tip - 4) % CurveState::NPREV];
-
-    const Color color = g_palette[g_colorstate.colorix];
-    const Circle circle =
-        Circle(p0, p1, p2, p3, radius, pressure, color, g_max_circle_guid);
-    if (add_circle_to_spatial_hash(circle)) {
-      g_circles.push_back(circle);
-      g_commander.add_to_command(circle);
-      g_max_circle_guid++;
-      g_renderstate.damaged = true;
-    }
-    return;
   }
 
   // choosing a color.
@@ -614,7 +592,7 @@ void handle_packet(int p) {
       for (int yix = starty / HASH_CELL_SZ - 1; yix <= endy / HASH_CELL_SZ + 1;
            ++yix) {
         if (!g_spatial_hash.count(make_pair(xix, yix))) {
-          return;
+          continue;
         }
         unordered_set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
         vector<int> to_erase;
@@ -636,10 +614,11 @@ void handle_packet(int p) {
         }
       }
     }
+    return;
   } // end if(is_eraser )
 
   // not erasing / hovering eraser
-  if (g_curvestate.is_down && g_colorstate.is_eraser &&
+  if (g_colorstate.is_eraser &&
       !(EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
     g_curvestate.is_down = false;
     return;
@@ -740,7 +719,7 @@ bool handle_event(SDL_Event &event) {
 
   else if (event.type == SDL_WINDOWEVENT &&
            event.window.event == SDL_WINDOWEVENT_ENTER) {
-     // need to repaint when window gains focus
+    // need to repaint when window gains focus
     g_renderstate.damaged = true;
     return false;
   }
@@ -842,11 +821,6 @@ int main() {
     const bool logging_was_damaged = g_renderstate.damaged;
     if (g_renderstate.damaged) {
       g_renderstate.damaged = false;
-      Uint8 opaque = 255;
-      // SDL_SetRenderDrawColor(renderer, g_draw_background_color.r,
-      // 		   g_draw_background_color.g,
-      // 		   g_draw_background_color.b, opaque);
-      // SDL_RenderClear(renderer);
 
       cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
       cairo_set_source_rgba(g_cr, 0.9, 0.9, 0.9, 1.0);
