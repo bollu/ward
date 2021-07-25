@@ -28,14 +28,15 @@ static const int MAX_PEN_RADIUS = 10;
 static const int MIN_ERASER_RADIUS = 30;
 static const int MAX_ERASER_RADIUS = 100;
 
+// size of grid.
 const int GRID_BASE_SIZE = 100;
 
 // 1080p
 int SCREEN_WIDTH = -1;
 int SCREEN_HEIGHT = -1;
 
-static const int NUM_SCREENS =
-    5; // 5x5 x screen total world size when we zoom out.
+// zoomout to 1/10;
+static const int OVERVIEW_ZOOMOUT_FACTOR = 10;
 
 struct Color {
   int r, g, b;
@@ -686,7 +687,7 @@ bool handle_event(SDL_Event &event) {
       if (!g_overviewstate.overviewing) {
         g_overviewstate.overviewing = true;
         g_renderstate.damaged = true;
-        g_renderstate.zoom = 1.0 / 5;
+        g_renderstate.zoom = 1.0 / OVERVIEW_ZOOMOUT_FACTOR;
         g_overviewstate.pan = g_renderstate.pan;
         g_renderstate.pan.x = g_renderstate.pan.y = 0;
         break;
@@ -778,6 +779,9 @@ int main() {
     SDL_Log("Could not create a window: %s", SDL_GetError());
     return -1;
   }
+
+  // start pan at center.
+  g_renderstate.pan = V2<int>(SCREEN_WIDTH * OVERVIEW_ZOOMOUT_FACTOR/2, SCREEN_HEIGHT*OVERVIEW_ZOOMOUT_FACTOR/2);
 
   // https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
   // https://github.com/serge-rgb/milton/search?q=SDL_SysWMEvent
