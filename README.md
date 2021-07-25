@@ -25,12 +25,8 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] infinite whiteboard with panning.
 - [x] Wacom tablet pressure sensitive drawing.
 - [x] quick minimap view to view the entire whiteboard at a glance.
-- [x] Not written using web tech: 530 lines of readable c++ code.
+- [x] Not written using web tech: ~800 lines of readable c++ code.
 - [x] grid background
-
-#### bugs
-- See why eraser does not work properly.
-- Handle window quit event.
 
 #### shortcuts:
 
@@ -39,7 +35,7 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - `E`: toggle `E` raser
 - `R`: `R` otate to next color.
 - lower wacom button + drag: pan.
-- upper wacom button: toggle overview. Tap to move to a location in the overview.
+- upper wacom button: toggle overview. Tap to move to a location in the overview. Tap upper button again to quit overview.
 - Color selection: hover pointer over color in color pot in color palette at bottom row.
 - Eraser selection: hover pointer over eraser in color palette at bottom left.
 
