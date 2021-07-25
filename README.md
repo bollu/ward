@@ -27,8 +27,6 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] quick minimap view to view the entire whiteboard at a glance.
 - [x] Not written using web tech: 530 lines of readable c++ code.
 - [x] grid background
-- [x] reisizing support.
-- [ ] [Concepts like pen smoothing](https://concepts.app/en/)
 
 #### bugs
 - See why eraser does not work properly.
