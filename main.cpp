@@ -292,11 +292,12 @@ void draw_pen_strokes_cr(cairo_t *cr) {
     for (int xix = startx / HASH_CELL_SZ - 1; xix <= endx / HASH_CELL_SZ;
          ++xix) {
         for (int yix = starty / HASH_CELL_SZ - 1; yix < endy; ++yix) {
-            if (!g_spatial_hash.count(make_pair(xix, yix))) {
+            auto it = g_spatial_hash.find(make_pair(xix, yix));
+            if (it == g_spatial_hash.end()) {
                 continue;
             }
 
-            unordered_set<int> &bucket = g_spatial_hash[make_pair(xix, yix)];
+            const unordered_set<int> &bucket = it->second;
             // SDL_Rect rect;
             for (int cix : bucket) {
                 const Stroke &c = g_strokes[cix];
@@ -357,7 +358,7 @@ void draw_grid_cr(cairo_t *cr) {
     }
 };
 
-void draw_palette(SDL_Renderer *renderer) {
+void draw_palette(cairo_t *cr) {
     // selected palette is drawn slightly higher.
     int SELECTED_PALETTE_HEIGHT = PALETTE_HEIGHT() * 1.3;
     // draw eraser.
@@ -370,10 +371,10 @@ void draw_palette(SDL_Renderer *renderer) {
         rect.h = (g_colorstate.is_eraser ? SELECTED_PALETTE_HEIGHT
                                          : PALETTE_HEIGHT());
         rect.y = SCREEN_HEIGHT - rect.h;
-        Color color = Color::RGB(255, 255, 255);  // eraser indicated by white.
-        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
-                               SDL_ALPHA_OPAQUE);
-        SDL_RenderFillRect(renderer, &rect);
+        cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);  // eraser is white.
+        cairo_rectangle(cr, rect.x, rect.y, rect.w, rect.h);
+        cairo_fill(cr);
     }
     // for each color in the color wheel, assign location.
     for (int i = 0; i < g_palette.size(); ++i) {
@@ -386,9 +387,15 @@ void draw_palette(SDL_Renderer *renderer) {
         rect.y = SCREEN_HEIGHT - rect.h;
 
         Color color = g_palette[i];
-        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
-                               SDL_ALPHA_OPAQUE);
-        SDL_RenderFillRect(renderer, &rect);
+
+        cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+        cairo_set_source_rgba(cr, color.r / 255.0f, 
+            color.g / 255.0f, color.b / 255.0f, 1.0);
+        cairo_rectangle(cr, rect.x, rect.y, rect.w, rect.h);
+        cairo_fill(cr);
+        // SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
+        //                        SDL_ALPHA_OPAQUE);
+        // SDL_RenderFillRect(renderer, &rect);
     }
 }
 
@@ -776,15 +783,16 @@ int main() {
             draw_grid_cr(g_cr);
             draw_pen_strokes_cr(g_cr);
             draw_eraser_cr(g_cr);
+            // draw_grid(renderer);
+            // draw_pen_strokes(renderer);
+            if (!g_panstate.panning && !g_overviewstate.overviewing) {
+                draw_palette(g_cr);
+            }
+
             SDL_Texture *texture =
                 SDL_CreateTextureFromSurface(renderer, g_sdl_surface);
             SDL_RenderCopy(renderer, texture, NULL, NULL);
 
-            // draw_grid(renderer);
-            // draw_pen_strokes(renderer);
-            if (!g_panstate.panning && !g_overviewstate.overviewing) {
-                draw_palette(renderer);
-            }
             SDL_RenderPresent(renderer);
             SDL_DestroyTexture(texture);
         }
@@ -797,13 +805,14 @@ int main() {
         int FPS = 1.0 / elapsedSec;
         const int TARGET_FPS = 60;
         const double timeToNextFrameMs = 1000.0 / TARGET_FPS;
-        if (timeToNextFrameMs > elapsedMS) {
-            // SDL_Delay(floor(1000.0/TARGET_FPS - elapsedMS));
             printf(
                 "%20s | elapsed time: %4.2f | sleeping for: %4.2f | time to "
                 "next frame: %4.2f\n",
                 (logging_was_damaged ? "DAMAGED" : ""), elapsedMS,
                 timeToNextFrameMs - elapsedMS, timeToNextFrameMs);
+
+        if (timeToNextFrameMs > elapsedMS) {
+            // SDL_Delay(floor(1000.0/TARGET_FPS - elapsedMS));
             // std::cout << "fps: " << FPS << " | elapsed msec: " << elapsedMS
             // << " | time to next frame ms: " << timeToNextFrameMs << "\n";
             SDL_Delay((timeToNextFrameMs - elapsedMS));
