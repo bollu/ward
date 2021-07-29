@@ -321,11 +321,11 @@ void draw_eraser_cr(cairo_t *cr) {
     if (!g_colorstate.is_eraser) {
         return;
     }
+    assert(g_colorstate.eraser_radius >= 0);
     const V2<float> pos =
-        g_renderstate.zoom * (g_penstate - g_renderstate.pan).cast<float>();
+        g_renderstate.zoom * (g_penstate).cast<float>();
     assert(g_colorstate.eraser_radius >= 0);
     const float radius = g_colorstate.eraser_radius * g_renderstate.zoom;
-
     cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_OVER);
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.8);  // eraser is white.
     cairo_arc(cr, pos.x, pos.y, radius, 0, 2.0 * M_PI);
@@ -480,11 +480,11 @@ void handle_packet(int p) {
             g_curvestate.prev = cur;
 
             const Color color = g_palette[g_colorstate.colorix];
-            const Stroke Stroke(prev, cur, radius, pressure, color,
+            const Stroke s(prev, cur, radius, pressure, color,
                                 g_max_stroke_guid);
-            if (add_stroke_to_spatial_hash(Stroke)) {
-                g_strokes.push_back(Stroke);
-                g_commander.add_to_command(Stroke);
+            if (add_stroke_to_spatial_hash(s)) {
+                g_strokes.push_back(s);
+                g_commander.add_to_command(s);
                 g_max_stroke_guid++;
                 g_renderstate.damaged = true;
             }
