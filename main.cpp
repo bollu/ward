@@ -8,6 +8,7 @@
 #include <X11/Xlib.h>  // Every Xlib program must include this
 #include <X11/extensions/XInput.h>
 #include <cairo/cairo.h>
+#include <cairo/cairo-gl.h>
 
 #include <map>
 #include <optional>

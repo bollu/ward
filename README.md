@@ -27,6 +27,7 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] quick minimap view to view the entire whiteboard at a glance.
 - [x] Not written using web tech: ~800 lines of readable c++ code.
 - [x] grid background
+- [ ] [Rendering vector graphics art on the GPU](https://web.archive.org/web/20161206095824/http://http.developer.nvidia.com:80/GPUGems3/gpugems3_ch25.html)
 
 #### shortcuts:
 
