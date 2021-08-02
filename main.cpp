@@ -1,6 +1,9 @@
+#include <GL/gl.h>
 #include <SDL_events.h>
 #include <SDL_surface.h>
+#include <GL/glu.h>
 
+#include <SDL_video.h>
 #include <iostream>
 #define EASYTAB_IMPLEMENTATION
 #include <SDL2/SDL.h>
@@ -20,12 +23,13 @@
 #include "assert.h"
 #include "easytab.h"
 
-using namespace std;
+// https://gist.github.com/derofim/033cb33ed46636071d3983bb7b235981
+// https://github.com/cubicool/cairo-gl-sdl2/blob/master/src/sdl-example.cpp
+
 using namespace std;
 
 // CONFIG
-static const int MIN_PEN_RADIUS = 10;
-static const int MAX_PEN_RADIUS = 10;
+static const int PEN_RADIUS = 10;
 
 static const int MIN_ERASER_RADIUS = 30;
 static const int MAX_ERASER_RADIUS = 100;
@@ -122,18 +126,14 @@ using ll = long long;
 struct Stroke {
     ll guid;
     V2<int> posStart, posEnd;
-    int radius;
-    float pressure;
     Color color;
 
     V2<int> pos() const { return 0.5 * (posStart + posEnd); }
 
-    Stroke(V2<int> posStart, V2<int> posEnd, int radius, float pressure,
+    Stroke(V2<int> posStart, V2<int> posEnd,
            Color color, ll guid)
         : posStart(posStart),
           posEnd(posEnd),
-          radius(radius),
-          pressure(pressure),
           color(color),
           guid(guid) {}
 };
@@ -183,7 +183,7 @@ struct hash_pair_int {
 // TODO: order the Stroke indexes
 // by insertion time, so we paint in the right
 // order.
-static const int HASH_CELL_SZ = 300;
+static const int HASH_CELL_SZ = 1000;
 unordered_map<pair<int, int>, unordered_set<int>, hash_pair_int> g_spatial_hash;
 
 // returns if Stroke was really added.
@@ -200,7 +200,7 @@ bool add_stroke_to_spatial_hash(const Stroke &c) {
         // int dx = c.pos.x - d.x;
         // int dy = c.pos.y - d.y;
         // int dlsq = dx * dx + dy * dy;
-        if (sqrt(delta.lensq()) + c.radius < d.radius) {
+        if (sqrt(delta.lensq()) < 0.3*PEN_RADIUS) {
             return false;
         }
     }
@@ -288,7 +288,21 @@ void draw_pen_strokes_cr(cairo_t *cr) {
     cairo_set_line_join(cr, cairo_line_join_t::CAIRO_LINE_JOIN_ROUND);
     // https://www.cairographics.org/operators/
     // cairo_set_antialias (cr, cairo_antialias_t::CAIRO_ANTIALIAS_BEST);
-    cairo_set_line_width(cr, g_renderstate.zoom * MAX_PEN_RADIUS);
+    cairo_set_line_width(cr, g_renderstate.zoom * PEN_RADIUS);
+
+    // for(int i = 0; i < g_strokes.size(); ++i) {
+    //         const Stroke &c = g_strokes[i];
+    //             V2<float> cr1 = g_renderstate.zoom *
+    //                             (c.posStart - g_renderstate.pan).cast<float>();
+    //             V2<float> cr2 = g_renderstate.zoom *
+    //                             (c.posEnd - g_renderstate.pan).cast<float>();
+    //             cairo_set_source_rgba(cr, c.color.r / 255.0, c.color.g / 255.0,
+    //                                   c.color.b / 255.0, 1.0);
+    //             cairo_move_to(cr, cr1.x, cr1.y);
+    //             cairo_line_to(cr, cr2.x, cr2.y);
+    //             cairo_stroke(cr);
+
+    // }
 
     for (int xix = startx / HASH_CELL_SZ - 1; xix <= endx / HASH_CELL_SZ;
          ++xix) {
@@ -302,15 +316,12 @@ void draw_pen_strokes_cr(cairo_t *cr) {
             // SDL_Rect rect;
             for (int cix : bucket) {
                 const Stroke &c = g_strokes[cix];
-                // V2<float> cr0 = g_renderstate.zoom * (c.posPrevEnd -
-                // g_renderstate.pan).cast<float>();
                 V2<float> cr1 = g_renderstate.zoom *
                                 (c.posStart - g_renderstate.pan).cast<float>();
                 V2<float> cr2 = g_renderstate.zoom *
                                 (c.posEnd - g_renderstate.pan).cast<float>();
                 cairo_set_source_rgba(cr, c.color.r / 255.0, c.color.g / 255.0,
                                       c.color.b / 255.0, 1.0);
-                cairo_set_line_width(cr, g_renderstate.zoom * c.radius);
                 cairo_move_to(cr, cr1.x, cr1.y);
                 cairo_line_to(cr, cr2.x, cr2.y);
                 cairo_stroke(cr);
@@ -407,25 +418,36 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
-SDL_Surface *g_sdl_surface = nullptr;
+cairo_device_t* g_cr_device = nullptr;
+// SDL_Surface *g_sdl_surface = nullptr;
 cairo_surface_t *g_cr_surface = nullptr;
 cairo_t *g_cr = nullptr;
 
-void cairo_setup_surface() {
-    if (g_sdl_surface) {
-        SDL_FreeSurface(g_sdl_surface);
-        assert(g_cr_surface);
-        cairo_surface_destroy(g_cr_surface);
-        assert(g_cr);
-        cairo_destroy(g_cr);
-    }
+void cairo_setup_surface(SDL_SysWMinfo &sysinfo) {
+    // if (g_sdl_surface) {
+    //     SDL_FreeSurface(g_sdl_surface);
+    //     assert(g_cr_surface);
+    //     cairo_surface_destroy(g_cr_surface);
+    //     assert(g_cr);
+    //     cairo_destroy(g_cr);
+    // }
 
-    g_sdl_surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
-                                         0x00ff0000, 0x0000ff00, 0x000000ff, 0);
-    g_cr_surface = cairo_image_surface_create_for_data(
-        (unsigned char *)g_sdl_surface->pixels, CAIRO_FORMAT_RGB24,
-        SCREEN_WIDTH, SCREEN_HEIGHT, g_sdl_surface->pitch);
-    cairo_surface_set_device_scale(g_cr_surface, 1, 1);
+    // g_sdl_surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
+                                         // 0x00ff0000, 0x0000ff00, 0x000000ff, 0);
+    // g_cr_surface = cairo_image_surface_create_for_data(
+    //     (unsigned char *)g_sdl_surface->pixels, CAIRO_FORMAT_RGB24,
+    //     SCREEN_WIDTH, SCREEN_HEIGHT, g_sdl_surface->pitch);
+    // cairo_surface_set_device_scale(g_cr_surface, 1, 1);
+
+    g_cr_surface = cairo_gl_surface_create_for_window(
+        g_cr_device,
+        sysinfo.info.x11.window,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT
+    );
+
+    assert(g_cr_surface && "unable to create cairo-GL surface!");
+
     g_cr = cairo_create(g_cr_surface);
 }
 
@@ -474,10 +496,6 @@ void handle_packet(int p) {
             g_commander.start_new_command();
         }
 
-        const float t = pressure * pressure;
-        const int radius =
-            int((1. - t) * (float)MIN_PEN_RADIUS + t * (float)MAX_PEN_RADIUS);
-
         const V2<int> cur = g_renderstate.pan + g_penstate;
         if (!g_curvestate.filled) {
             g_curvestate.prev = cur;
@@ -487,9 +505,9 @@ void handle_packet(int p) {
             const V2<int> prev = g_curvestate.prev;
             g_curvestate.prev = cur;
 
+            if ((prev - cur).lensq() < PEN_RADIUS) { return; }
             const Color color = g_palette[g_colorstate.colorix];
-            const Stroke s(prev, cur, radius, pressure, color,
-                                g_max_stroke_guid);
+            const Stroke s(prev, cur, color, g_max_stroke_guid);
             if (add_stroke_to_spatial_hash(s)) {
                 g_strokes.push_back(s);
                 g_commander.add_to_command(s);
@@ -581,7 +599,7 @@ void handle_packet(int p) {
 }
 
 // return true if we should quit.
-bool handle_event(SDL_Event &event) {
+bool handle_event(SDL_SysWMinfo &sysinfo, SDL_Event &event) {
     if (event.type == SDL_QUIT) {
         return true;
     }
@@ -590,7 +608,7 @@ bool handle_event(SDL_Event &event) {
         event.window.event == SDL_WINDOWEVENT_RESIZED) {
         SCREEN_WIDTH = event.window.data1;
         SCREEN_HEIGHT = event.window.data2;
-        cairo_setup_surface();
+        cairo_setup_surface(sysinfo);
     } else if (event.type == SDL_SYSWMEVENT) {
         EasyTabResult res =
             EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
@@ -729,29 +747,48 @@ int main() {
         return -1;
     }
 
+
     // start pan at center.
     g_renderstate.pan = V2<int>(SCREEN_WIDTH * OVERVIEW_ZOOMOUT_FACTOR / 2,
                                 SCREEN_HEIGHT * OVERVIEW_ZOOMOUT_FACTOR / 2);
 
     // https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
     // https://github.com/serge-rgb/milton/search?q=SDL_SysWMEvent
+    // need to capture pen events.
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
 
     SDL_SysWMinfo sysinfo;
     SDL_VERSION(&sysinfo.version);
     int ok = SDL_GetWindowWMInfo(window, &sysinfo);
     assert(ok == SDL_TRUE && "unable to get SDL X11 information");
+    SDL_GLContext gl_context = SDL_GL_CreateContext(window);
+    SDL_GL_SetSwapInterval(1);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    SDL_Renderer *renderer =
-        SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    // glEnable(GL_DEPTH_TEST);
+    // glEnable(GL_TEXTURE_2D);
+    // glEnable(GL_BLEND);
+    // // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    // glViewport(0.0, 0.0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    // glClearColor(0.0, 0.1, 0.2, 1.0);
 
-    if (renderer == nullptr) {
-        SDL_Log("Could not create a renderer: %s", SDL_GetError());
-        return -1;
-    }
 
+    g_cr_device = cairo_glx_device_create(sysinfo.info.x11.display,
+        reinterpret_cast<GLXContext>(gl_context));
+    assert(g_cr_device && "unable to create cairo device from openGL context!");
+   
     // https://github.com/tsuu32/sdl2-cairo-example/blob/16a1eb41d649e1be72e9cb51860017d01b38af5e/sdl2-cairo.c
-    cairo_setup_surface();
+    cairo_setup_surface(sysinfo);
+
+
+    // SDL_Renderer *renderer =
+    //     SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+
+    // if (renderer == nullptr) {
+    //     SDL_Log("Could not create a renderer: %s", SDL_GetError());
+    //     return -1;
+    // }
 
     ok = EasyTab_Load(sysinfo.info.x11.display, sysinfo.info.x11.window);
     if (ok != EASYTAB_OK) {
@@ -760,42 +797,35 @@ int main() {
     assert(ok == EASYTAB_OK &&
            "PLEASE plug in your drawing tablet! [unable to load easytab]");
 
+    std::cerr << "\t-checkpoint: " << __LINE__ << "\n";
     bool g_quit = false;
     while (!g_quit) {
         const Uint64 start_count = SDL_GetPerformanceCounter();
         // Get the next event
         SDL_Event event;
         while (!g_quit && SDL_PollEvent(&event)) {
-            g_quit = handle_event(event);
+            g_quit = handle_event(sysinfo, event);
         }
 
         // eraser always damages because we need to redraw eraser Stroke.
         g_renderstate.damaged |= g_colorstate.is_eraser;
         // for logging into the console.
         const bool logging_was_damaged = g_renderstate.damaged;
-        if (g_renderstate.damaged) {
-            g_renderstate.damaged = false;
 
+        if (true || g_renderstate.damaged) {
+            g_renderstate.damaged = false;
+            // SDL_GL_MakeCurrent(window, gl_context);
             cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
             cairo_set_source_rgba(g_cr, 0.9, 0.9, 0.9, 1.0);
             cairo_rectangle(g_cr, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
             cairo_fill(g_cr);
-
             draw_grid_cr(g_cr);
             draw_pen_strokes_cr(g_cr);
             draw_eraser_cr(g_cr);
-            // draw_grid(renderer);
-            // draw_pen_strokes(renderer);
             if (!g_panstate.panning && !g_overviewstate.overviewing) {
                 draw_palette(g_cr);
             }
-
-            SDL_Texture *texture =
-                SDL_CreateTextureFromSurface(renderer, g_sdl_surface);
-            SDL_RenderCopy(renderer, texture, NULL, NULL);
-
-            SDL_RenderPresent(renderer);
-            SDL_DestroyTexture(texture);
+            SDL_GL_SwapWindow(window);
         }
 
         const Uint64 end_count = SDL_GetPerformanceCounter();
@@ -822,7 +852,9 @@ int main() {
 
     // Tidy up
     EasyTab_Unload(sysinfo.info.x11.display);
-    SDL_DestroyRenderer(renderer);
+    SDL_GL_DeleteContext(gl_context);
+
+    // SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;

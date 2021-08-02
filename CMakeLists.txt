@@ -11,10 +11,11 @@ find_package(PkgConfig)
 pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
 
 find_package(SDL2 REQUIRED)
+find_package(OpenGL REQUIRED)
 # find_package(Cairo REQUIRED)
 find_package(X11 REQUIRED)
 add_executable(ward main.cpp)
-target_link_libraries(ward SDL2::SDL2 SDL2::SDL2main  PkgConfig::CAIRO ${X11_LIBRARIES} ${X11_Xinput_LIB})
+target_link_libraries(ward SDL2::SDL2 SDL2::SDL2main ${OPENGL_LIBRARIES} PkgConfig::CAIRO ${X11_LIBRARIES} ${X11_Xinput_LIB})
 
 install(TARGETS ward DESTINATION bin)
 
