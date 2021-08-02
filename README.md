@@ -27,7 +27,6 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - [x] quick minimap view to view the entire whiteboard at a glance.
 - [x] Not written using web tech: ~800 lines of readable c++ code.
 - [x] grid background
-- [ ] [Rendering vector graphics art on the GPU](https://web.archive.org/web/20161206095824/http://http.developer.nvidia.com:80/GPUGems3/gpugems3_ch25.html)
 
 #### shortcuts:
 
@@ -45,10 +44,10 @@ The code uses:
 - the [EasyTab](https://github.com/ApoorvaJ/EasyTab) library to work with Wacom tablets.
 - The [Milton project](https://github.com/serge-rgb/milton) as heavy reference on how to work with tablets.
 - [SDL2](https://www.libsdl.org/) for rendering.
-- [Cairo](https://www.cairographics.org/manual/cairo-cairo-t.html) for anti aliased vector graphics.
+- [Cairo-gl](https://www.cairographics.org/manual/cairo-cairo-t.html) for anti aliased vector graphics.
 - [Spatial hashing](http://www.cs.ucf.edu/~jmesit/publications/scsc%202005.pdf) to quickly add and delete brush strokes.
 - Lazy repainting of the entire frame upon change..
-
+- Wishes to use [FastUIDraw](https://github.com/intel/fastuidraw) for an even faster backend than cairo.
 
 #### Build with `CMake`
 

@@ -283,7 +283,7 @@ void draw_pen_strokes_cr(cairo_t *cr) {
     const int endx = zoominv * (startx + SCREEN_WIDTH);
     const int endy = zoominv * (starty + SCREEN_HEIGHT);
 
-    cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+    // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
     cairo_set_line_cap(cr, cairo_line_cap_t::CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, cairo_line_join_t::CAIRO_LINE_JOIN_ROUND);
     // https://www.cairographics.org/operators/
@@ -339,7 +339,7 @@ void draw_eraser_cr(cairo_t *cr) {
         g_renderstate.zoom * (g_penstate).cast<float>();
     assert(g_colorstate.eraser_radius >= 0);
     const float radius = g_colorstate.eraser_radius * g_renderstate.zoom;
-    cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_OVER);
+    // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_OVER);
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.8);  // eraser is white.
     cairo_arc(cr, pos.x, pos.y, radius, 0, 2.0 * M_PI);
     cairo_fill(cr);
@@ -352,7 +352,7 @@ void draw_grid_cr(cairo_t *cr) {
     // set grid color.
 
     static const int GRID_LINE_WIDTH = 2;
-    cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+    // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
     cairo_set_line_width(cr, GRID_LINE_WIDTH);
     cairo_set_source_rgba(cr, 170. / 255.0, 170. / 255.0, 170. / 255.0, 1.0);
 
@@ -383,7 +383,7 @@ void draw_palette(cairo_t *cr) {
         rect.h = (g_colorstate.is_eraser ? SELECTED_PALETTE_HEIGHT
                                          : PALETTE_HEIGHT());
         rect.y = SCREEN_HEIGHT - rect.h;
-        cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+        // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
         cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);  // eraser is white.
         cairo_rectangle(cr, rect.x, rect.y, rect.w, rect.h);
         cairo_fill(cr);
@@ -400,7 +400,7 @@ void draw_palette(cairo_t *cr) {
 
         Color color = g_palette[i];
 
-        cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+        // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
         cairo_set_source_rgba(cr, color.r / 255.0f, 
             color.g / 255.0f, color.b / 255.0f, 1.0);
         cairo_rectangle(cr, rect.x, rect.y, rect.w, rect.h);
@@ -448,7 +448,6 @@ void cairo_setup_surface(SDL_SysWMinfo &sysinfo) {
 
     assert(g_cr_surface && "unable to create cairo-GL surface!");
 
-    g_cr = cairo_create(g_cr_surface);
 }
 
 // handle easytab packet with index p
@@ -814,8 +813,10 @@ int main() {
 
         if (true || g_renderstate.damaged) {
             g_renderstate.damaged = false;
+            g_cr = cairo_create(g_cr_surface);
+
             // SDL_GL_MakeCurrent(window, gl_context);
-            cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
+            // cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
             cairo_set_source_rgba(g_cr, 0.9, 0.9, 0.9, 1.0);
             cairo_rectangle(g_cr, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
             cairo_fill(g_cr);
@@ -826,6 +827,7 @@ int main() {
                 draw_palette(g_cr);
             }
             SDL_GL_SwapWindow(window);
+            cairo_destroy(g_cr);
         }
 
         const Uint64 end_count = SDL_GetPerformanceCounter();
