@@ -735,6 +735,7 @@ int main() {
         if (true || g_renderstate.damaged) {
             g_renderstate.damaged = false;
 
+	    vg_begin_frame();
             // SDL_GL_MakeCurrent(window, gl_context);
             // cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
 	    vg_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Color::RGB(240, 240, 240));
@@ -744,6 +745,7 @@ int main() {
             if (!g_panstate.panning && !g_overviewstate.overviewing) {
 	      draw_palette();
             }
+	    vg_end_frame();
             SDL_GL_SwapWindow(window);
             // cairo_destroy(g_cr);
         }

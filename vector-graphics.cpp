@@ -49,3 +49,6 @@ void vg_draw_circle(int x, int y, int r, Color c) {
     cairo_arc(g_cr, x, y, r, 0, 2.0 * M_PI);
     cairo_fill(g_cr);
 }
+
+void vg_begin_frame(){};
+void vg_end_frame(){};
