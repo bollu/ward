@@ -10,8 +10,6 @@
 #include <SDL2/SDL_syswm.h>
 #include <X11/Xlib.h>  // Every Xlib program must include this
 #include <X11/extensions/XInput.h>
-#include <cairo/cairo.h>
-#include <cairo/cairo-gl.h>
 
 #include <map>
 #include <optional>
@@ -22,6 +20,7 @@
 
 #include "assert.h"
 #include "easytab.h"
+#include "vector-graphics.h"
 
 // https://gist.github.com/derofim/033cb33ed46636071d3983bb7b235981
 // https://github.com/cubicool/cairo-gl-sdl2/blob/master/src/sdl-example.cpp
@@ -44,15 +43,6 @@ int SCREEN_HEIGHT = -1;
 // zoomout to 1/10;
 static const int OVERVIEW_ZOOMOUT_FACTOR = 10;
 
-struct Color {
-    int r, g, b;
-    explicit Color() { this->r = this->g = this->b = 0; };
-
-    static Color RGB(int r, int g, int b) { return Color(r, g, b); }
-
-   private:
-    Color(int r, int g, int b) : r(r), g(g), b(b) {}
-};
 
 static const Color g_draw_background_color = Color::RGB(0xEE, 0xEE, 0xEE);
 static const Color g_overview_background_color = Color::RGB(0xEE, 0xEE, 0xEE);
@@ -276,7 +266,7 @@ struct Commander {
 
 } g_commander;
 
-void draw_pen_strokes_cr(cairo_t *cr) {
+void draw_pen_strokes_cr() {
     const float zoominv = (1.0 / g_renderstate.zoom);
     const int startx = zoominv * g_renderstate.pan.x;
     const int starty = zoominv * g_renderstate.pan.y;
@@ -284,11 +274,8 @@ void draw_pen_strokes_cr(cairo_t *cr) {
     const int endy = zoominv * (starty + SCREEN_HEIGHT);
 
     // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-    cairo_set_line_cap(cr, cairo_line_cap_t::CAIRO_LINE_CAP_ROUND);
-    cairo_set_line_join(cr, cairo_line_join_t::CAIRO_LINE_JOIN_ROUND);
     // https://www.cairographics.org/operators/
     // cairo_set_antialias (cr, cairo_antialias_t::CAIRO_ANTIALIAS_BEST);
-    cairo_set_line_width(cr, g_renderstate.zoom * PEN_RADIUS);
 
     // for(int i = 0; i < g_strokes.size(); ++i) {
     //         const Stroke &c = g_strokes[i];
@@ -320,17 +307,15 @@ void draw_pen_strokes_cr(cairo_t *cr) {
                                 (c.posStart - g_renderstate.pan).cast<float>();
                 V2<float> cr2 = g_renderstate.zoom *
                                 (c.posEnd - g_renderstate.pan).cast<float>();
-                cairo_set_source_rgba(cr, c.color.r / 255.0, c.color.g / 255.0,
-                                      c.color.b / 255.0, 1.0);
-                cairo_move_to(cr, cr1.x, cr1.y);
-                cairo_line_to(cr, cr2.x, cr2.y);
-                cairo_stroke(cr);
+		vg_draw_line(cr1.x, cr1.y, cr2.x, cr2.y, g_renderstate.zoom * PEN_RADIUS, c.color);
+
             }
         }
     }
+
 }
 
-void draw_eraser_cr(cairo_t *cr) {
+void draw_eraser_cr() {
     if (!g_colorstate.is_eraser) {
         return;
     }
@@ -339,12 +324,11 @@ void draw_eraser_cr(cairo_t *cr) {
         g_renderstate.zoom * (g_penstate).cast<float>();
     assert(g_colorstate.eraser_radius >= 0);
     const float radius = g_colorstate.eraser_radius * g_renderstate.zoom;
-    // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_OVER);
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.8);  // eraser is white.
-    cairo_arc(cr, pos.x, pos.y, radius, 0, 2.0 * M_PI);
-    cairo_fill(cr);
+    const Color COLOR_GRAY = Color::RGB(100, 100, 100);
+    vg_draw_circle(pos.x, pos.y, radius, COLOR_GRAY);
+
 }
-void draw_grid_cr(cairo_t *cr) {
+void draw_grid_cr() {
     const int GRIDSIZE = g_renderstate.zoom * GRID_BASE_SIZE;
     const int STARTX = -1 * (GRIDSIZE + (g_renderstate.pan.x % GRIDSIZE));
     const int STARTY = -1 * (GRIDSIZE + (g_renderstate.pan.y % GRIDSIZE));
@@ -352,25 +336,23 @@ void draw_grid_cr(cairo_t *cr) {
     // set grid color.
 
     static const int GRID_LINE_WIDTH = 2;
+    const Color GRID_LINE_COLOR = Color::RGB(170, 170, 170);
+
     // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-    cairo_set_line_width(cr, GRID_LINE_WIDTH);
-    cairo_set_source_rgba(cr, 170. / 255.0, 170. / 255.0, 170. / 255.0, 1.0);
+    // cairo_set_line_width(cr, GRID_LINE_WIDTH);
+    // cairo_set_source_rgba(cr, 170. / 255.0, 170. / 255.0, 170. / 255.0, 1.0);
 
     for (int x = STARTX; x <= STARTX + SCREEN_WIDTH + GRIDSIZE; x += GRIDSIZE) {
-        cairo_move_to(cr, x, STARTY);
-        cairo_line_to(cr, x, STARTY + SCREEN_HEIGHT + 2 * GRIDSIZE);
-        cairo_stroke(cr);
+      vg_draw_line(x, STARTY, x, STARTY + SCREEN_HEIGHT + 2*GRIDSIZE, GRID_LINE_WIDTH, GRID_LINE_COLOR);
     }
 
     for (int y = STARTY; y <= STARTY + SCREEN_HEIGHT + GRIDSIZE;
          y += GRIDSIZE) {
-        cairo_move_to(cr, STARTX, y);
-        cairo_line_to(cr, STARTX + SCREEN_WIDTH + 2 * GRIDSIZE, y);
-        cairo_stroke(cr);
+      vg_draw_line(STARTX, y, STARTX + SCREEN_WIDTH + 2*GRIDSIZE, y, GRID_LINE_WIDTH, GRID_LINE_COLOR);
     }
 };
 
-void draw_palette(cairo_t *cr) {
+void draw_palette() {
     // selected palette is drawn slightly higher.
     int SELECTED_PALETTE_HEIGHT = PALETTE_HEIGHT() * 1.3;
     // draw eraser.
@@ -383,10 +365,8 @@ void draw_palette(cairo_t *cr) {
         rect.h = (g_colorstate.is_eraser ? SELECTED_PALETTE_HEIGHT
                                          : PALETTE_HEIGHT());
         rect.y = SCREEN_HEIGHT - rect.h;
-        // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);  // eraser is white.
-        cairo_rectangle(cr, rect.x, rect.y, rect.w, rect.h);
-        cairo_fill(cr);
+	static const Color COLOR_WHITE = Color::RGB(255, 255, 255);
+	vg_draw_rect(rect.x, rect.y, rect.w, rect.h, COLOR_WHITE);
     }
     // for each color in the color wheel, assign location.
     for (int i = 0; i < g_palette.size(); ++i) {
@@ -400,14 +380,8 @@ void draw_palette(cairo_t *cr) {
 
         Color color = g_palette[i];
 
-        // cairo_set_operator(cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-        cairo_set_source_rgba(cr, color.r / 255.0f, 
-            color.g / 255.0f, color.b / 255.0f, 1.0);
-        cairo_rectangle(cr, rect.x, rect.y, rect.w, rect.h);
-        cairo_fill(cr);
-        // SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b,
-        //                        SDL_ALPHA_OPAQUE);
-        // SDL_RenderFillRect(renderer, &rect);
+	vg_draw_rect(rect.x, rect.y, rect.w, rect.h, color);
+
     }
 }
 
@@ -418,37 +392,7 @@ double lerp(double t, int x0, int x1) {
     return x1 * t + x0 * (1 - t);
 }
 
-cairo_device_t* g_cr_device = nullptr;
-// SDL_Surface *g_sdl_surface = nullptr;
-cairo_surface_t *g_cr_surface = nullptr;
-cairo_t *g_cr = nullptr;
 
-void cairo_setup_surface(SDL_SysWMinfo &sysinfo) {
-    // if (g_sdl_surface) {
-    //     SDL_FreeSurface(g_sdl_surface);
-    //     assert(g_cr_surface);
-    //     cairo_surface_destroy(g_cr_surface);
-    //     assert(g_cr);
-    //     cairo_destroy(g_cr);
-    // }
-
-    // g_sdl_surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
-                                         // 0x00ff0000, 0x0000ff00, 0x000000ff, 0);
-    // g_cr_surface = cairo_image_surface_create_for_data(
-    //     (unsigned char *)g_sdl_surface->pixels, CAIRO_FORMAT_RGB24,
-    //     SCREEN_WIDTH, SCREEN_HEIGHT, g_sdl_surface->pitch);
-    // cairo_surface_set_device_scale(g_cr_surface, 1, 1);
-
-    g_cr_surface = cairo_gl_surface_create_for_window(
-        g_cr_device,
-        sysinfo.info.x11.window,
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT
-    );
-
-    assert(g_cr_surface && "unable to create cairo-GL surface!");
-
-}
 
 // handle easytab packet with index p
 void handle_packet(int p) {
@@ -504,7 +448,7 @@ void handle_packet(int p) {
             const V2<int> prev = g_curvestate.prev;
             g_curvestate.prev = cur;
 
-            if ((prev - cur).lensq() < PEN_RADIUS) { return; }
+            // if ((prev - cur).lensq() < PEN_RADIUS) { return; }
             const Color color = g_palette[g_colorstate.colorix];
             const Stroke s(prev, cur, color, g_max_stroke_guid);
             if (add_stroke_to_spatial_hash(s)) {
@@ -598,7 +542,7 @@ void handle_packet(int p) {
 }
 
 // return true if we should quit.
-bool handle_event(SDL_SysWMinfo &sysinfo, SDL_Event &event) {
+bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &event) {
     if (event.type == SDL_QUIT) {
         return true;
     }
@@ -607,7 +551,7 @@ bool handle_event(SDL_SysWMinfo &sysinfo, SDL_Event &event) {
         event.window.event == SDL_WINDOWEVENT_RESIZED) {
         SCREEN_WIDTH = event.window.data1;
         SCREEN_HEIGHT = event.window.data2;
-        cairo_setup_surface(sysinfo);
+	vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
     } else if (event.type == SDL_SYSWMEVENT) {
         EasyTabResult res =
             EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
@@ -764,30 +708,7 @@ int main() {
     SDL_GL_SetSwapInterval(1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    // glEnable(GL_DEPTH_TEST);
-    // glEnable(GL_TEXTURE_2D);
-    // glEnable(GL_BLEND);
-    // // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    // glViewport(0.0, 0.0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    // glClearColor(0.0, 0.1, 0.2, 1.0);
-
-
-    g_cr_device = cairo_glx_device_create(sysinfo.info.x11.display,
-        reinterpret_cast<GLXContext>(gl_context));
-    assert(g_cr_device && "unable to create cairo device from openGL context!");
-   
-    // https://github.com/tsuu32/sdl2-cairo-example/blob/16a1eb41d649e1be72e9cb51860017d01b38af5e/sdl2-cairo.c
-    cairo_setup_surface(sysinfo);
-
-
-    // SDL_Renderer *renderer =
-    //     SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-
-    // if (renderer == nullptr) {
-    //     SDL_Log("Could not create a renderer: %s", SDL_GetError());
-    //     return -1;
-    // }
+    vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     ok = EasyTab_Load(sysinfo.info.x11.display, sysinfo.info.x11.window);
     if (ok != EASYTAB_OK) {
@@ -803,7 +724,7 @@ int main() {
         // Get the next event
         SDL_Event event;
         while (!g_quit && SDL_PollEvent(&event)) {
-            g_quit = handle_event(sysinfo, event);
+	  g_quit = handle_event(sysinfo, gl_context, event);
         }
 
         // eraser always damages because we need to redraw eraser Stroke.
@@ -813,21 +734,18 @@ int main() {
 
         if (true || g_renderstate.damaged) {
             g_renderstate.damaged = false;
-            g_cr = cairo_create(g_cr_surface);
 
             // SDL_GL_MakeCurrent(window, gl_context);
             // cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-            cairo_set_source_rgba(g_cr, 0.9, 0.9, 0.9, 1.0);
-            cairo_rectangle(g_cr, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-            cairo_fill(g_cr);
-            draw_grid_cr(g_cr);
-            draw_pen_strokes_cr(g_cr);
-            draw_eraser_cr(g_cr);
+	    vg_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Color::RGB(240, 240, 240));
+            draw_grid_cr();
+            draw_pen_strokes_cr();
+            draw_eraser_cr();
             if (!g_panstate.panning && !g_overviewstate.overviewing) {
-                draw_palette(g_cr);
+	      draw_palette();
             }
             SDL_GL_SwapWindow(window);
-            cairo_destroy(g_cr);
+            // cairo_destroy(g_cr);
         }
 
         const Uint64 end_count = SDL_GetPerformanceCounter();
