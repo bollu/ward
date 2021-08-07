@@ -1,8 +1,9 @@
-#include <GL/gl.h>
 #include <SDL_events.h>
 #include <SDL_surface.h>
-#include <GL/glu.h>
 
+#include <GL/glew.h>
+#include <GL/glu.h>
+#include <GL/gl.h>
 #include <SDL_video.h>
 #include <iostream>
 #define EASYTAB_IMPLEMENTATION
@@ -708,6 +709,11 @@ int main() {
     SDL_GL_SetSwapInterval(1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
+    if(glewInit() != GLEW_OK) {
+		printf("Could not init glew.\n");
+		return -1;
+    }
+
     vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     ok = EasyTab_Load(sysinfo.info.x11.display, sysinfo.info.x11.window);
@@ -756,7 +762,7 @@ int main() {
             (end_count - start_count) / (double)counts_per_second;
         const double elapsedMS = elapsedSec * 1000.0;
         int FPS = 1.0 / elapsedSec;
-        const int TARGET_FPS = 60;
+        const int TARGET_FPS = 30;
         const double timeToNextFrameMs = 1000.0 / TARGET_FPS;
             printf(
                 "%20s | elapsed time: %4.2f | sleeping for: %4.2f | time to "

@@ -1,0 +1,34 @@
+```
+  10.25%  ward          libcairo.so.2.11704.0    [.] sub_row
+   8.46%  ward          libcairo.so.2.11704.0    [.] step
+   7.21%  ward          libcairo.so.2.11704.0    [.] polygon_add_edge
+   6.62%  ward          libcairo.so.2.11704.0    [.] cell_list_find_pair
+   6.38%  ward          libcairo.so.2.11704.0    [.] cell_list_add_subspan
+   2.90%  ward          libcairo.so.2.11704.0    [.] _cairo_gl_composite_emit_solid_span
+   2.88%  ward          [kernel.vmlinux]         [k] syscall_exit_to_user_mode
+   2.05%  ward          libcairo.so.2.11704.0    [.] pool_alloc
+   1.92%  ward          libcairo.so.2.11704.0    [.] blit_a8
+   1.89%  ward          libcairo.so.2.11704.0    [.] glitter_scan_converter_render
+   1.85%  ward          libcairo.so.2.11704.0    [.] _add_edge
+   1.52%  ward          libcairo.so.2.11704.0    [.] _cairo_gl_bounded_opaque_spans
+   1.41%  ward          [kernel.vmlinux]         [k] entry_SYSCALL_64
+   1.24%  ward          libcairo.so.2.11704.0    [.] _cairo_pen_init
+   1.23%  ward          libcairo.so.2.11704.0    [.] polygon_fill_buckets
+   1.15%  ward          [kernel.vmlinux]         [k] syscall_return_via_sysret
+   1.06%  ward          libcairo.so.2.11704.0    [.] merge_sorted_edges
+   1.04%  ward          libcairo.so.2.11704.0    [.] _cairo_polygon_add_edge
+   1.01%  ward          ward                     [.] draw_pen_strokes_cr
+   1.00%  ward          libcairo.so.2.11704.0    [.] _polygon_insert_edge_into_its_y_bucket
+   0.97%  ward          libc-2.33.so             [.] __memmove_avx_unaligned_erms
+   0.89%  ward          libcairo.so.2.11704.0    [.] _cairo_pen_compute_slopes
+   0.83%  ward          libcairo.so.2.11704.0    [.] cell_list_alloc
+   0.74%  ward          libcairo.so.2.11704.0    [.] cell_list_rewind
+   0.66%  ward          libcairo.so.2.11704.0    [.] cairo_matrix_transform_distance
+   0.63%  ward          libcairo.so.2.11704.0    [.] cell_list_render_edge
+   0.62%  ward          libcairo.so.2.11704.0    [.] _cairo_polygon_add_contour
+   0.62%  ward          libcairo.so.2.11704.0    [.] sort_edges
+   0.58%  ward          libcairo.so.2.11704.0    [.] _cairo_slope_init
+   0.58%  ward          libcairo.so.2.11704.0    [.] add_fan
+   0.56%  ward          libcairo.so.2.11704.0    [.] contour_add_point
+   0.56%  ward          libcairo.so.2.11704.0    [.] _cairo_contour_add_point
+```
