@@ -3,7 +3,7 @@
 #include <SDL_video.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-gl.h>
-
+#include <iostream>
 
 
 
@@ -22,8 +22,8 @@ void vg_init(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, int width, int hei
 	g_width = width;
 	g_height = height;
 	g_px_ratio = g_width / g_height;
-	// nvgLineCap(g_vg, NVG_ROUND);
-	// nvgLineJoin(g_vg,  NVG_ROUND);
+	nvgLineCap(g_vg, NVG_ROUND);
+	nvgLineJoin(g_vg,  NVG_ROUND);
 	// nvgLineCap(g_vg, NVG_BUTT);
 	// nvgLineJoin(g_vg, NVG_BEVEL);
 	// nvgLineJoin(g_vg, NVG_MITER);
@@ -46,6 +46,8 @@ void vg_draw_line(int x1, int y1, int x2, int y2, int radius, Color c) {
 	nvgStroke(g_vg);
 
 }
+
+
 void vg_draw_rect(int x, int y, int w, int h, Color c) {
 	nvgBeginPath(g_vg);
 	nvgRect(g_vg, x, y, w, h);
@@ -57,6 +59,25 @@ void vg_draw_circle(int x, int y, int r, Color c) {
 	nvgCircle(g_vg, x, y, r);
 	nvgFillColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
 	nvgFill(g_vg);
+}
+
+void vg_draw_lines(V2<int> *vs, int len, int radius, Color c) {
+	nvgStrokeColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
+	nvgStrokeWidth(g_vg, radius);
+	nvgBeginPath(g_vg);
+	nvgMoveTo(g_vg, vs[0].x, vs[0].y);
+	// std::cerr << "[[[starting line\n";
+	for(int i = 0; i + 1 < len; ++i) {
+	  nvgQuadTo(g_vg, vs[i].x, vs[i].y, vs[i+1].x, vs[i+1].y);
+	}
+	// std::cerr << "ending line]]]\n";
+	nvgStroke(g_vg);
+
+	// for(int i = 1; i < len; ++i) {
+	  // vg_draw_circle(vs[i].x, vs[i].y, radius, c);
+	  // std::cerr << "\t-drawing line to [" << vs[i].x << " " << vs[i].y << "] \n";
+	// }
+
 }
 
 void vg_begin_frame(){

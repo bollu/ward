@@ -67,48 +67,6 @@ int PALETTE_HEIGHT() { return SCREEN_HEIGHT / 20; }
 //  https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
 // easytab: #device[13] = Wacom Bamboo One S Pen
 
-template <typename T>
-struct V2 {
-    T x = 0;
-    T y = 0;
-    V2() : x(0), y(0){};
-    V2(T x, T y) : x(x), y(y){};
-
-    V2<T> sub(const V2<T> &other) const { return V2(x - other.x, y - other.y); }
-    V2<T> add(const V2<T> &other) const { return V2(x + other.x, y + other.y); }
-    V2<T> scale(float f) const { return V2(f * x, f * y); }
-    T lensq() const { return x * x + y * y; }
-
-    template <typename O>
-    V2<O> cast() const {
-        return V2<O>(O(x), O(y));
-    }
-};
-
-template <typename T>
-V2<T> operator+(V2<T> a, V2<T> b) {
-    return a.add(b);
-}
-template <typename T>
-V2<T> operator-(V2<T> a, V2<T> b) {
-    return a.sub(b);
-}
-template <typename T>
-V2<T> operator-(V2<T> a) {
-    return V2<T>(-a.x, -a.y);
-}
-template <typename T>
-V2<T> operator*(float f, V2<T> a) {
-    return a.scale(f);
-}
-template <typename T>
-V2<T> operator*(V2<T> a, float f) {
-    return a.scale(f);
-}
-template <typename T>
-V2<T> operator/(V2<T> a, float f) {
-    return a.scale(1.0 / f);
-}
 
 using ll = long long;
 static ll g_max_stroke_guid = 0;
@@ -128,6 +86,7 @@ struct Stroke {
           color(color),
           guid(guid) {}
 };
+
 
 struct CurveState {
     V2<int> start;
@@ -213,6 +172,7 @@ void run_command(vector<int> &cmd) {
     }
 };
 
+
 struct Commander {
     vector<vector<int>> cmds;
     // have run commands till index
@@ -268,6 +228,22 @@ struct Commander {
 } g_commander;
 
 void draw_pen_strokes_cr() {
+
+  for(int ix = 0; ix <= g_commander.runtill; ++ix) {
+    if (ix >= g_commander.cmds.size()) { break; }
+    vector<int> &pts = g_commander.cmds[ix];
+    if (pts.size() < 2) { continue; }
+    Color color = g_strokes[pts[0]].color;
+
+    vector<V2<int>> vs(pts.size());
+    for(int i = 0; i < pts.size(); ++i) {
+      vs[i] = g_strokes[pts[i]].posStart  - g_renderstate.pan;
+    }
+    const int line_radius = g_renderstate.zoom * PEN_RADIUS;
+    vg_draw_lines(vs.data(), vs.size(), line_radius, color);
+  }
+  return;
+  
     const float zoominv = (1.0 / g_renderstate.zoom);
     const int startx = zoominv * g_renderstate.pan.x;
     const int starty = zoominv * g_renderstate.pan.y;
@@ -291,6 +267,7 @@ void draw_pen_strokes_cr() {
     //             cairo_stroke(cr);
 
     // }
+
 
     for (int xix = startx / HASH_CELL_SZ - 1; xix <= endx / HASH_CELL_SZ;
          ++xix) {
