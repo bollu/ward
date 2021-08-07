@@ -22,18 +22,27 @@ void vg_init(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, int width, int hei
 	g_width = width;
 	g_height = height;
 	g_px_ratio = g_width / g_height;
-	nvgLineCap(g_vg, NVG_ROUND);
-	nvgLineJoin(g_vg,  NVG_ROUND);
+	// nvgLineCap(g_vg, NVG_ROUND);
+	// nvgLineJoin(g_vg,  NVG_ROUND);
+	// nvgLineCap(g_vg, NVG_BUTT);
+	// nvgLineJoin(g_vg, NVG_BEVEL);
+	// nvgLineJoin(g_vg, NVG_MITER);
+	// nvgMiterLimit(g_vg, 5.0);
 }
 
 void vg_draw_line(int x1, int y1, int x2, int y2, int radius, Color c) {
-	nvgBeginPath(g_vg);
 
+
+	nvgStrokeColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
+	nvgStrokeWidth(g_vg, radius);
+
+	nvgBeginPath(g_vg);
+	// nvgCircle(g_vg, x1, y1, radius);
+	// nvgFillColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
+	// nvgFill(g_vg);
 	nvgMoveTo(g_vg, x1, y1);
 	nvgLineTo(g_vg, x2, y2);
 	// nvgFillColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
-	nvgStrokeColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
-	nvgStrokeWidth(g_vg, radius);
 	nvgStroke(g_vg);
 
 }
