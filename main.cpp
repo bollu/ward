@@ -492,6 +492,7 @@ void handle_packet(int p) {
         (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
         if (!g_curvestate.is_down) {
             g_curvestate.is_down = true;
+            g_commander.start_new_command();
         }
 
         g_colorstate.eraser_radius =
@@ -516,6 +517,7 @@ void handle_packet(int p) {
                 for (SegPointGuid v : bucket) {
                     Segment &s = g_segments[v.seg_guid];
                     assert(v.point_guid < s.points.size());
+                    if (s.visible[v.point_guid] == false) { continue; }
                     const V2<int> delta =
                         g_renderstate.pan + g_penstate - s.points[v.point_guid];
                     // eraser has some radius without pressing.
@@ -524,13 +526,13 @@ void handle_packet(int p) {
                                              g_colorstate.eraser_radius) {
                         to_erase.push_back(v);
                         g_commander.add_to_command(v);
+                        s.visible[v.point_guid] = false;
                         g_renderstate.damaged = true;
                     }
                 }
-
-                for (auto e : to_erase) {
-                    bucket.erase(e);
-                }
+                // for (auto e : to_erase) {
+                //     bucket.erase(e);
+                // }
             }
         }
         return;
