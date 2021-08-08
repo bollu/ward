@@ -61,23 +61,24 @@ void vg_draw_circle(int x, int y, int r, Color c) {
 	nvgFill(g_vg);
 }
 
-void vg_draw_lines(V2<int> *vs, int len, int radius, Color c) {
+void vg_draw_lines(const std::vector<V2<int>> &vs, const std::vector<bool> &visible, int radius, Color c, V2<int> offset){
+    assert(vs.size() == visible.size());
+    // TODO: use `visible`vs!
 	nvgStrokeColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
 	nvgStrokeWidth(g_vg, radius);
-	nvgBeginPath(g_vg);
-	nvgMoveTo(g_vg, vs[0].x, vs[0].y);
-	// std::cerr << "[[[starting line\n";
-	for(int i = 0; i + 1 < len; ++i) {
-	  nvgQuadTo(g_vg, vs[i].x, vs[i].y, vs[i+1].x, vs[i+1].y);
-	}
-	// std::cerr << "ending line]]]\n";
-	nvgStroke(g_vg);
 
-	// for(int i = 1; i < len; ++i) {
-	  // vg_draw_circle(vs[i].x, vs[i].y, radius, c);
-	  // std::cerr << "\t-drawing line to [" << vs[i].x << " " << vs[i].y << "] \n";
-	// }
-
+    int l = 0;
+    while(l + 1 < vs.size()) {
+        if (!(visible[l] && visible[l+1])) { l++; continue; }
+        nvgBeginPath(g_vg);
+        nvgMoveTo(g_vg, vs[l].x - offset.x, vs[l].y - offset.y);
+        int r = l + 1;
+        for(; r < vs.size() && visible[r]; ++r) {
+            nvgLineTo(g_vg, vs[r].x - offset.x, vs[r].y - offset.y);
+        }
+        nvgStroke(g_vg);
+        l = r;
+    }
 }
 
 void vg_begin_frame(){

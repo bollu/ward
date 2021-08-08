@@ -69,30 +69,20 @@ int PALETTE_HEIGHT() { return SCREEN_HEIGHT / 20; }
 
 
 using ll = long long;
-static ll g_max_stroke_guid = 0;
-
 using ll = long long;
-struct Stroke {
-    ll guid;
-    V2<int> posStart, posEnd;
-    Color color;
 
-    V2<int> pos() const { return 0.5 * (posStart + posEnd); }
+struct Segment {
+  ll guid;
+  vector<V2<int>> points;
+  vector<bool> visible;
+  Color color;
+  Segment() {};
 
-    Stroke(V2<int> posStart, V2<int> posEnd,
-           Color color, ll guid)
-        : posStart(posStart),
-          posEnd(posEnd),
-          color(color),
-          guid(guid) {}
 };
 
-
 struct CurveState {
-    V2<int> start;
     bool is_down = false;
-    bool filled = false;
-    V2<int> prev;
+    int seg_guid;
 } g_curvestate;
 
 V2<int> g_penstate;
@@ -121,7 +111,7 @@ struct RenderState {
     bool damaged = true;
 } g_renderstate;
 
-std::vector<Stroke> g_strokes;
+std::vector<Segment> g_segments;
 
 // https://stackoverflow.com/a/54945214/5305365
 struct hash_pair_int {
@@ -130,51 +120,97 @@ struct hash_pair_int {
     };
 };
 
+
+
+
+// value stored into the spatial hash
+struct SegPointGuid {
+  int seg_guid; // guid of segment.
+  int point_guid; // guid of point stored in segment.
+
+
+  bool operator < (const SegPointGuid &other) const {
+      return make_pair(seg_guid, point_guid) < 
+          make_pair(other.seg_guid, other.point_guid);
+  }
+
+  bool operator == (const SegPointGuid &other) const {
+      return make_pair(seg_guid, point_guid) == make_pair(other.seg_guid, other.point_guid);
+  }
+
+  SegPointGuid() : seg_guid(-1), point_guid(-1) {};
+  SegPointGuid(int seg_guid, int point_guid) : seg_guid(seg_guid),
+    point_guid(point_guid) {};
+};
+
+struct hash_spatial_hash_value {
+    size_t operator()(const SegPointGuid &v) const {
+        return std::hash<int>()(v.point_guid) * 31 + std::hash<int>()(v.seg_guid);
+    };
+};
+
+// a key into the spatial hash is coordinates.
+using SpatialHashKey = pair<int, int>;
+
 // TODO: order the Stroke indexes
 // by insertion time, so we paint in the right
 // order.
 static const int HASH_CELL_SZ = 1000;
-unordered_map<pair<int, int>, unordered_set<int>, hash_pair_int> g_spatial_hash;
+unordered_map<pair<int, int>, unordered_set<SegPointGuid, hash_spatial_hash_value>, hash_pair_int> g_spatial_hash;
 
-// returns if Stroke was really added.
-bool add_stroke_to_spatial_hash(const Stroke &c) {
-    int sx = c.pos().x / HASH_CELL_SZ;
-    int sy = c.pos().y / HASH_CELL_SZ;
-    // TODO: treat strokes as rects, not points.
-    unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
-
-    // this is already covered.
-    for (int ix : bucket) {
-        const Stroke &d = g_strokes[ix];
-        V2<int> delta = c.pos() - d.pos();
-        // int dx = c.pos.x - d.x;
-        // int dy = c.pos.y - d.y;
-        // int dlsq = dx * dx + dy * dy;
-        if (sqrt(delta.lensq()) < 0.3*PEN_RADIUS) {
-            return false;
-        }
-    }
-    bucket.insert(c.guid);
+// returns true if point was added.
+bool add_to_spatial_hash(SegPointGuid value) {
+    const Segment &s = g_segments[value.seg_guid];
+    const V2<int> point = s.points[value.point_guid];
+    const int sx = point.x / HASH_CELL_SZ;
+    int sy = point.y / HASH_CELL_SZ;
+    unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket = g_spatial_hash[make_pair(sx, sy)];
+    bucket.insert(value);
     return true;
+
+    // assert(value.seg_guid >= 0 && value.seg_guid < g_segments.size());
+    // Segment &s = g_segments[value.seg_guid];
+    // V2<int> point = s.points[value.point_guid];
+    // int sx = point.x / HASH_CELL_SZ;
+    // int sy = point.y / HASH_CELL_SZ;
+    // // TODO: treat strokes as rects, not points.
+    // unordered_set<SegPointGuid> &bucket = g_spatial_hash[make_pair(sx, sy)];
+
+    // // this is already covered.
+    // for (SegPointGuid &spv : bucket) {
+    //     const V2<int> d = other.points[point_guid];
+    //     break;
+
+    //     V2<int> delta = point - d;
+    //     // int dx = c.pos.x - d.x;
+    //     // int dy = c.pos.y - d.y;
+    //     // int dlsq = dx * dx + dy * dy;
+    //     if (sqrt(delta.lensq()) < 0.5*PEN_RADIUS) {
+    //         return false;
+    //     }
+    // }
+    // bucket.insert(value);
+    // return true;
 }
 
-void run_command(vector<int> &cmd) {
-    for (const int cix : cmd) {
-        const Stroke &c = g_strokes[cix];
-        const int sx = c.pos().x / HASH_CELL_SZ;
-        const int sy = c.pos().y / HASH_CELL_SZ;
-        std::unordered_set<int> &bucket = g_spatial_hash[make_pair(sx, sy)];
-        if (bucket.count(cix)) {
-            bucket.erase(cix);
-        } else {
-            bucket.insert(cix);
-        }
+using Command = vector<SegPointGuid>;
+
+void run_command(const Command &c) {
+    cout << "command has |" << c.size() << "| segments\n";
+    for (const SegPointGuid &v : c) {
+        assert(v.seg_guid < g_segments.size());
+        Segment &s = g_segments[v.seg_guid];
+        cout << "\t-segment |" << v.seg_guid << "| " 
+            << "#points in segment |" << s.points.size() << "| "
+            << "#visible in segment |" << s.visible.size() << "| "
+            << " point ix |" << v.point_guid << "|\n";
+        assert(v.point_guid < s.visible.size());
+        s.visible[v.point_guid] = !s.visible[v.point_guid];
     }
 };
 
-
 struct Commander {
-    vector<vector<int>> cmds;
+    vector<Command> cmds;
     // have run commands till index
     int runtill = -1;
 
@@ -201,6 +237,10 @@ struct Commander {
     }
 
     void start_new_command() {
+        // TODO: can ask segments to fixup data if too damaged.
+        // What is the heuristic? Need some kind of amortized
+        // analysis to decide when to resize a segment
+        // that is changed too much.
         // if we have more commands, drop extra commands.
         if (this->runtill != cmds.size() - 1) {
             // keep [0, ..., undoix]
@@ -208,18 +248,19 @@ struct Commander {
             cmds.resize(this->runtill + 1);
         }
 
+
         assert(this->runtill == this->cmds.size() - 1);
         this->cmds.push_back({});
         this->runtill = this->cmds.size() - 1;
     }
 
-    void add_to_command(const Stroke &c) {
+    void add_to_command(SegPointGuid v) {
         assert(this->runtill == this->cmds.size() - 1);
         assert(this->cmds.size() >= 0);
-        this->cmds[this->runtill].push_back(c.guid);
+        this->cmds[this->runtill].push_back(v);
     }
 
-    const vector<int> &getCommand() const {
+    const Command &getCommand() const {
         assert(this->runtill == this->cmds.size() - 1);
         assert(this->cmds.size() > 0);
         return this->cmds[this->runtill];
@@ -229,18 +270,12 @@ struct Commander {
 
 void draw_pen_strokes_cr() {
 
-  for(int ix = 0; ix <= g_commander.runtill; ++ix) {
-    if (ix >= g_commander.cmds.size()) { break; }
-    vector<int> &pts = g_commander.cmds[ix];
-    if (pts.size() < 2) { continue; }
-    Color color = g_strokes[pts[0]].color;
-
-    vector<V2<int>> vs(pts.size());
-    for(int i = 0; i < pts.size(); ++i) {
-      vs[i] = g_strokes[pts[i]].posStart  - g_renderstate.pan;
-    }
+  for(int i = 0; i < g_segments.size(); ++i) {
+    const Segment &s = g_segments[i];
+    if (s.points.size() < 2) { continue; }
     const int line_radius = g_renderstate.zoom * PEN_RADIUS;
-    vg_draw_lines(vs.data(), vs.size(), line_radius, color);
+    // TODO: incorporate erasing here.
+    vg_draw_lines(s.points, s.visible, line_radius, s.color, g_renderstate.pan);
   }
   return;
   
@@ -254,8 +289,8 @@ void draw_pen_strokes_cr() {
     // https://www.cairographics.org/operators/
     // cairo_set_antialias (cr, cairo_antialias_t::CAIRO_ANTIALIAS_BEST);
 
-    // for(int i = 0; i < g_strokes.size(); ++i) {
-    //         const Stroke &c = g_strokes[i];
+    // for(int i = 0; i < g_segments.size(); ++i) {
+    //         const Stroke &c = g_segments[i];
     //             V2<float> cr1 = g_renderstate.zoom *
     //                             (c.posStart - g_renderstate.pan).cast<float>();
     //             V2<float> cr2 = g_renderstate.zoom *
@@ -269,27 +304,27 @@ void draw_pen_strokes_cr() {
     // }
 
 
-    for (int xix = startx / HASH_CELL_SZ - 1; xix <= endx / HASH_CELL_SZ;
-         ++xix) {
-        for (int yix = starty / HASH_CELL_SZ - 1; yix < endy; ++yix) {
-            auto it = g_spatial_hash.find(make_pair(xix, yix));
-            if (it == g_spatial_hash.end()) {
-                continue;
-            }
+    // for (int xix = startx / HASH_CELL_SZ - 1; xix <= endx / HASH_CELL_SZ;
+    //      ++xix) {
+    //     for (int yix = starty / HASH_CELL_SZ - 1; yix < endy; ++yix) {
+    //         auto it = g_spatial_hash.find(make_pair(xix, yix));
+    //         if (it == g_spatial_hash.end()) {
+    //             continue;
+    //         }
 
-            const unordered_set<int> &bucket = it->second;
-            // SDL_Rect rect;
-            for (int cix : bucket) {
-                const Stroke &c = g_strokes[cix];
-                V2<float> cr1 = g_renderstate.zoom *
-                                (c.posStart - g_renderstate.pan).cast<float>();
-                V2<float> cr2 = g_renderstate.zoom *
-                                (c.posEnd - g_renderstate.pan).cast<float>();
-		vg_draw_line(cr1.x, cr1.y, cr2.x, cr2.y, g_renderstate.zoom * PEN_RADIUS, c.color);
+    //         const unordered_set<int> &bucket = it->second;
+    //         // SDL_Rect rect;
+    //         for (int cix : bucket) {
+    //             const Stroke &c = g_segments[cix];
+    //             V2<float> cr1 = g_renderstate.zoom *
+    //                             (c.posStart - g_renderstate.pan).cast<float>();
+    //             V2<float> cr2 = g_renderstate.zoom *
+    //                             (c.posEnd - g_renderstate.pan).cast<float>();
+	// 	vg_draw_line(cr1.x, cr1.y, cr2.x, cr2.y, g_renderstate.zoom * PEN_RADIUS, c.color);
 
-            }
-        }
-    }
+    //         }
+    //     }
+    // }
 
 }
 
@@ -411,32 +446,24 @@ void handle_packet(int p) {
     if ((EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) &&
         !g_colorstate.is_eraser) {
         if (!g_curvestate.is_down) {
-            g_curvestate.start = g_penstate + g_renderstate.pan;
             g_curvestate.is_down = true;
-            g_curvestate.filled = false;
+            g_segments.push_back(Segment());
+            g_curvestate.seg_guid = g_segments.size()-1;
             g_commander.start_new_command();
+            return;
         }
 
         const V2<int> cur = g_renderstate.pan + g_penstate;
-        if (!g_curvestate.filled) {
-            g_curvestate.prev = cur;
-            g_curvestate.filled = true;
-            return;
-        } else {
-            const V2<int> prev = g_curvestate.prev;
-            g_curvestate.prev = cur;
-
-            // if ((prev - cur).lensq() < PEN_RADIUS) { return; }
-            const Color color = g_palette[g_colorstate.colorix];
-            const Stroke s(prev, cur, color, g_max_stroke_guid);
-            if (add_stroke_to_spatial_hash(s)) {
-                g_strokes.push_back(s);
-                g_commander.add_to_command(s);
-                g_max_stroke_guid++;
-                g_renderstate.damaged = true;
-            }
-            return;
-        }
+        const Color color = g_palette[g_colorstate.colorix];
+        Segment &s = g_segments[g_curvestate.seg_guid];
+        s.points.push_back(cur);
+        s.visible.push_back(true);
+        const int point_guid = s.points.size()-1;
+        SegPointGuid v(g_curvestate.seg_guid, point_guid);
+        add_to_spatial_hash(v);
+        g_commander.add_to_command(v);
+        g_renderstate.damaged = true;
+        return;
     }
 
     // choosing a color.
@@ -465,7 +492,6 @@ void handle_packet(int p) {
         (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch)) {
         if (!g_curvestate.is_down) {
             g_curvestate.is_down = true;
-            g_commander.start_new_command();
         }
 
         g_colorstate.eraser_radius =
@@ -483,28 +509,27 @@ void handle_packet(int p) {
              xix <= endx / HASH_CELL_SZ + 1; ++xix) {
             for (int yix = starty / HASH_CELL_SZ - 1;
                  yix <= endy / HASH_CELL_SZ + 1; ++yix) {
-                if (!g_spatial_hash.count(make_pair(xix, yix))) {
-                    continue;
-                }
-                unordered_set<int> &bucket =
-                    g_spatial_hash[make_pair(xix, yix)];
-                vector<int> to_erase;
-                for (int cix : bucket) {
-                    Stroke &c = g_strokes[cix];
+                auto it = g_spatial_hash.find(make_pair(xix, yix));
+                if (it == g_spatial_hash.end()) { continue; }
+                unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket = it->second;
+                vector<SegPointGuid> to_erase;
+                for (SegPointGuid v : bucket) {
+                    Segment &s = g_segments[v.seg_guid];
+                    assert(v.point_guid < s.points.size());
                     const V2<int> delta =
-                        g_renderstate.pan + g_penstate - c.pos();
+                        g_renderstate.pan + g_penstate - s.points[v.point_guid];
                     // eraser has some radius without pressing.
                     // With pressing, becomes bigger.
                     if (delta.lensq() <= g_colorstate.eraser_radius *
                                              g_colorstate.eraser_radius) {
-                        to_erase.push_back(cix);
-                        g_commander.add_to_command(c);
+                        to_erase.push_back(v);
+                        g_commander.add_to_command(v);
                         g_renderstate.damaged = true;
                     }
                 }
 
-                for (int cix : to_erase) {
-                    bucket.erase(cix);
+                for (auto e : to_erase) {
+                    bucket.erase(e);
                 }
             }
         }
@@ -721,7 +746,7 @@ int main() {
 	    vg_begin_frame();
             // SDL_GL_MakeCurrent(window, gl_context);
             // cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-	    vg_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Color::RGB(240, 240, 240));
+        vg_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Color::RGB(240, 240, 240));
             draw_grid_cr();
             draw_pen_strokes_cr();
             draw_eraser_cr();
