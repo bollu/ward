@@ -76,6 +76,7 @@ void vg_draw_lines(const std::vector<V2<int>> &vs, const std::vector<bool> &visi
         for(; r < vs.size() && visible[r]; ++r) {
             nvgLineTo(g_vg, vs[r].x - offset.x, vs[r].y - offset.y);
         }
+        nvgStrokeColor(g_vg, nvgRGBA(c.r, c.g, c.b, 255));
         nvgStroke(g_vg);
         l = r;
     }
