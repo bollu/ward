@@ -38,6 +38,11 @@ struct V2 {
     }
 };
 
+struct Rect {
+    V2<int> pos;
+    V2<int> dim;
+};
+
 template <typename T>
 V2<T> operator+(V2<T> a, V2<T> b) {
     return a.add(b);
@@ -69,7 +74,7 @@ void vg_draw_line(int x1, int y1, int x2, int y2, int radius, Color c);
 // draw at vs[i] - offset
 void vg_draw_lines(const std::vector<V2<int>> &vs,
                    const std::vector<bool> &visible, int radius, Color c,
-                   V2<int> offset);
+                   V2<int> offset, float zoom);
 void vg_draw_rect(int x1, int y1, int x2, int y2, Color c);
 void vg_draw_circle(int x, int y, int r, Color c);
 void vg_begin_frame();

@@ -1,10 +1,10 @@
+#include <GL/glew.h>
+#include <GL/gl.h>
+#include <GL/glu.h>
 #include <SDL_events.h>
 #include <SDL_surface.h>
-
-#include <GL/glew.h>
-#include <GL/glu.h>
-#include <GL/gl.h>
 #include <SDL_video.h>
+
 #include <iostream>
 #define EASYTAB_IMPLEMENTATION
 #include <SDL2/SDL.h>
@@ -23,6 +23,7 @@
 #include "easytab.h"
 #include "vector-graphics.h"
 
+// TODO: fix zoom and scroll!
 // https://gist.github.com/derofim/033cb33ed46636071d3983bb7b235981
 // https://github.com/cubicool/cairo-gl-sdl2/blob/master/src/sdl-example.cpp
 
@@ -40,10 +41,6 @@ const int GRID_BASE_SIZE = 100;
 // 1080p
 int SCREEN_WIDTH = -1;
 int SCREEN_HEIGHT = -1;
-
-// zoomout to 1/10;
-static const int OVERVIEW_ZOOMOUT_FACTOR = 10;
-
 
 static const Color g_draw_background_color = Color::RGB(0xEE, 0xEE, 0xEE);
 static const Color g_overview_background_color = Color::RGB(0xEE, 0xEE, 0xEE);
@@ -67,17 +64,15 @@ int PALETTE_HEIGHT() { return SCREEN_HEIGHT / 20; }
 //  https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
 // easytab: #device[13] = Wacom Bamboo One S Pen
 
-
 using ll = long long;
 using ll = long long;
 
 struct Segment {
-  ll guid;
-  vector<V2<int>> points;
-  vector<bool> visible;
-  Color color;
-  Segment() {};
-
+    ll guid;
+    vector<V2<int>> points;
+    vector<bool> visible;
+    Color color;
+    Segment(){};
 };
 
 struct CurveState {
@@ -101,14 +96,15 @@ struct ColorState {
 } g_colorstate;
 
 struct OverviewState {
+    V2<int> minPos;
+    V2<int> maxPos;
+    V2<int> saved_pan;
     bool overviewing = false;
-    V2<int> pan;
 } g_overviewstate;
 
 struct RenderState {
     float zoom = 1;
-    V2<int> pan = V2<int>(SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2);
-    bool damaged = true;
+    V2<int> pan;
 } g_renderstate;
 
 std::vector<Segment> g_segments;
@@ -120,32 +116,30 @@ struct hash_pair_int {
     };
 };
 
-
-
-
 // value stored into the spatial hash
 struct SegPointGuid {
-  int seg_guid; // guid of segment.
-  int point_guid; // guid of point stored in segment.
+    int seg_guid;    // guid of segment.
+    int point_guid;  // guid of point stored in segment.
 
+    bool operator<(const SegPointGuid &other) const {
+        return make_pair(seg_guid, point_guid) <
+               make_pair(other.seg_guid, other.point_guid);
+    }
 
-  bool operator < (const SegPointGuid &other) const {
-      return make_pair(seg_guid, point_guid) < 
-          make_pair(other.seg_guid, other.point_guid);
-  }
+    bool operator==(const SegPointGuid &other) const {
+        return make_pair(seg_guid, point_guid) ==
+               make_pair(other.seg_guid, other.point_guid);
+    }
 
-  bool operator == (const SegPointGuid &other) const {
-      return make_pair(seg_guid, point_guid) == make_pair(other.seg_guid, other.point_guid);
-  }
-
-  SegPointGuid() : seg_guid(-1), point_guid(-1) {};
-  SegPointGuid(int seg_guid, int point_guid) : seg_guid(seg_guid),
-    point_guid(point_guid) {};
+    SegPointGuid() : seg_guid(-1), point_guid(-1){};
+    SegPointGuid(int seg_guid, int point_guid)
+        : seg_guid(seg_guid), point_guid(point_guid){};
 };
 
 struct hash_spatial_hash_value {
     size_t operator()(const SegPointGuid &v) const {
-        return std::hash<int>()(v.point_guid) * 31 + std::hash<int>()(v.seg_guid);
+        return std::hash<int>()(v.point_guid) * 31 +
+               std::hash<int>()(v.seg_guid);
     };
 };
 
@@ -156,7 +150,10 @@ using SpatialHashKey = pair<int, int>;
 // by insertion time, so we paint in the right
 // order.
 static const int HASH_CELL_SZ = 1000;
-unordered_map<pair<int, int>, unordered_set<SegPointGuid, hash_spatial_hash_value>, hash_pair_int> g_spatial_hash;
+unordered_map<pair<int, int>,
+              unordered_set<SegPointGuid, hash_spatial_hash_value>,
+              hash_pair_int>
+    g_spatial_hash;
 
 // returns true if point was added.
 void add_to_spatial_hash(SegPointGuid value) {
@@ -164,7 +161,8 @@ void add_to_spatial_hash(SegPointGuid value) {
     const V2<int> point = s.points[value.point_guid];
     const int sx = point.x / HASH_CELL_SZ;
     int sy = point.y / HASH_CELL_SZ;
-    unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket = g_spatial_hash[make_pair(sx, sy)];
+    unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket =
+        g_spatial_hash[make_pair(sx, sy)];
     auto it = bucket.find(value);
     assert(it == bucket.end());
     bucket.insert(value);
@@ -175,7 +173,8 @@ void remove_from_spatial_hash(SegPointGuid value) {
     const V2<int> point = s.points[value.point_guid];
     const int sx = point.x / HASH_CELL_SZ;
     int sy = point.y / HASH_CELL_SZ;
-    unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket = g_spatial_hash[make_pair(sx, sy)];
+    unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket =
+        g_spatial_hash[make_pair(sx, sy)];
     auto it = bucket.find(value);
     assert(it != bucket.end());
     bucket.erase(it);
@@ -234,7 +233,6 @@ struct Commander {
             cmds.resize(this->runtill + 1);
         }
 
-
         assert(this->runtill == this->cmds.size() - 1);
         this->cmds.push_back({});
         this->runtill = this->cmds.size() - 1;
@@ -255,14 +253,16 @@ struct Commander {
 } g_commander;
 
 void draw_pen_strokes_cr() {
-
-  for(int i = 0; i < g_segments.size(); ++i) {
-    const Segment &s = g_segments[i];
-    if (s.points.size() < 2) { continue; }
-    const int line_radius = g_renderstate.zoom * PEN_RADIUS;
-    // TODO: incorporate erasing here.
-    vg_draw_lines(s.points, s.visible, line_radius, s.color, g_renderstate.pan);
-  }
+    for (int i = 0; i < g_segments.size(); ++i) {
+        const Segment &s = g_segments[i];
+        if (s.points.size() < 2) {
+            continue;
+        }
+        const int line_radius = g_renderstate.zoom * PEN_RADIUS;
+        // TODO: incorporate erasing here.
+        vg_draw_lines(s.points, s.visible, line_radius, s.color,
+                      g_renderstate.pan, g_renderstate.zoom);
+    }
 }
 
 void draw_eraser_cr() {
@@ -270,13 +270,11 @@ void draw_eraser_cr() {
         return;
     }
     assert(g_colorstate.eraser_radius >= 0);
-    const V2<float> pos =
-        g_renderstate.zoom * (g_penstate).cast<float>();
+    const V2<float> pos = g_renderstate.zoom * (g_penstate).cast<float>();
     assert(g_colorstate.eraser_radius >= 0);
     const float radius = g_colorstate.eraser_radius * g_renderstate.zoom;
     const Color COLOR_GRAY = Color::RGB(100, 100, 100);
     vg_draw_circle(pos.x, pos.y, radius, COLOR_GRAY);
-
 }
 void draw_grid_cr() {
     const int GRIDSIZE = g_renderstate.zoom * GRID_BASE_SIZE;
@@ -293,12 +291,14 @@ void draw_grid_cr() {
     // cairo_set_source_rgba(cr, 170. / 255.0, 170. / 255.0, 170. / 255.0, 1.0);
 
     for (int x = STARTX; x <= STARTX + SCREEN_WIDTH + GRIDSIZE; x += GRIDSIZE) {
-      vg_draw_line(x, STARTY, x, STARTY + SCREEN_HEIGHT + 2*GRIDSIZE, GRID_LINE_WIDTH, GRID_LINE_COLOR);
+        vg_draw_line(x, STARTY, x, STARTY + SCREEN_HEIGHT + 2 * GRIDSIZE,
+                     GRID_LINE_WIDTH, GRID_LINE_COLOR);
     }
 
     for (int y = STARTY; y <= STARTY + SCREEN_HEIGHT + GRIDSIZE;
          y += GRIDSIZE) {
-      vg_draw_line(STARTX, y, STARTX + SCREEN_WIDTH + 2*GRIDSIZE, y, GRID_LINE_WIDTH, GRID_LINE_COLOR);
+        vg_draw_line(STARTX, y, STARTX + SCREEN_WIDTH + 2 * GRIDSIZE, y,
+                     GRID_LINE_WIDTH, GRID_LINE_COLOR);
     }
 };
 
@@ -315,8 +315,8 @@ void draw_palette() {
         rect.h = (g_colorstate.is_eraser ? SELECTED_PALETTE_HEIGHT
                                          : PALETTE_HEIGHT());
         rect.y = SCREEN_HEIGHT - rect.h;
-	static const Color COLOR_WHITE = Color::RGB(255, 255, 255);
-	vg_draw_rect(rect.x, rect.y, rect.w, rect.h, COLOR_WHITE);
+        static const Color COLOR_WHITE = Color::RGB(255, 255, 255);
+        vg_draw_rect(rect.x, rect.y, rect.w, rect.h, COLOR_WHITE);
     }
     // for each color in the color wheel, assign location.
     for (int i = 0; i < g_palette.size(); ++i) {
@@ -330,8 +330,7 @@ void draw_palette() {
 
         Color color = g_palette[i];
 
-	vg_draw_rect(rect.x, rect.y, rect.w, rect.h, color);
-
+        vg_draw_rect(rect.x, rect.y, rect.w, rect.h, color);
     }
 }
 
@@ -341,8 +340,6 @@ double lerp(double t, int x0, int x1) {
     assert(t <= 1);
     return x1 * t + x0 * (1 - t);
 }
-
-
 
 // handle easytab packet with index p
 void handle_packet(int p) {
@@ -358,7 +355,9 @@ void handle_packet(int p) {
     if (g_overviewstate.overviewing) {
         // if tapped, move to tap location
         if (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) {
-            g_renderstate.pan = (1.0 / g_renderstate.zoom) * g_penstate;
+            g_renderstate.pan = g_renderstate.pan +  1.0/g_renderstate.zoom * g_penstate;
+            g_renderstate.pan = g_renderstate.pan -
+                                V2<int>(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
             g_renderstate.zoom = 1.0;
             g_overviewstate.overviewing = false;
         }
@@ -368,7 +367,6 @@ void handle_packet(int p) {
     if (g_panstate.panning) {
         g_renderstate.pan = g_panstate.startpan +
                             PAN_FACTOR * (g_panstate.startpenpos - g_penstate);
-        g_renderstate.damaged = true;
         return;
     }
 
@@ -385,8 +383,9 @@ void handle_packet(int p) {
         if (!g_curvestate.is_down) {
             g_curvestate.is_down = true;
             g_segments.push_back(Segment());
-            g_curvestate.seg_guid = g_segments.size()-1;
-            g_segments[g_curvestate.seg_guid].color = g_palette[g_colorstate.colorix];
+            g_curvestate.seg_guid = g_segments.size() - 1;
+            g_segments[g_curvestate.seg_guid].color =
+                g_palette[g_colorstate.colorix];
             g_commander.start_new_command();
             return;
         }
@@ -394,13 +393,18 @@ void handle_packet(int p) {
         const V2<int> cur = g_renderstate.pan + g_penstate;
         const Color color = g_palette[g_colorstate.colorix];
         Segment &s = g_segments[g_curvestate.seg_guid];
+        g_overviewstate.minPos.x = min<int>(g_overviewstate.minPos.x, cur.x);
+        g_overviewstate.minPos.y = min<int>(g_overviewstate.minPos.y, cur.y);
+
+        g_overviewstate.maxPos.x = max<int>(g_overviewstate.maxPos.x, cur.x);
+        g_overviewstate.maxPos.y = max<int>(g_overviewstate.maxPos.y, cur.y);
+
         s.points.push_back(cur);
         s.visible.push_back(true);
-        const int point_guid = s.points.size()-1;
+        const int point_guid = s.points.size() - 1;
         SegPointGuid v(g_curvestate.seg_guid, point_guid);
         add_to_spatial_hash(v);
         g_commander.add_to_command(v);
-        g_renderstate.damaged = true;
         return;
     }
 
@@ -410,7 +414,6 @@ void handle_packet(int p) {
         if (ix == 0 && !g_colorstate.is_eraser) {
             g_colorstate.is_eraser = true;
             g_colorstate.eraser_radius = MIN_ERASER_RADIUS;
-            g_renderstate.damaged = true;
         }
 
         if (ix != 0 &&
@@ -418,7 +421,6 @@ void handle_packet(int p) {
             g_colorstate.is_eraser = false;
             g_colorstate.colorix = ix - 1;
             g_colorstate.eraser_radius = -1;
-            g_renderstate.damaged = true;
         }
         assert(g_colorstate.colorix >= 0);
         assert(g_colorstate.colorix < g_palette.size());
@@ -449,13 +451,18 @@ void handle_packet(int p) {
             for (int yix = starty / HASH_CELL_SZ - 1;
                  yix <= endy / HASH_CELL_SZ + 1; ++yix) {
                 auto it = g_spatial_hash.find(make_pair(xix, yix));
-                if (it == g_spatial_hash.end()) { continue; }
-                unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket = it->second;
+                if (it == g_spatial_hash.end()) {
+                    continue;
+                }
+                unordered_set<SegPointGuid, hash_spatial_hash_value> &bucket =
+                    it->second;
                 vector<SegPointGuid> to_erase;
                 for (SegPointGuid v : bucket) {
                     Segment &s = g_segments[v.seg_guid];
                     assert(v.point_guid < s.points.size());
-                    if (s.visible[v.point_guid] == false) { continue; }
+                    if (s.visible[v.point_guid] == false) {
+                        continue;
+                    }
                     const V2<int> delta =
                         g_renderstate.pan + g_penstate - s.points[v.point_guid];
                     // eraser has some radius without pressing.
@@ -465,7 +472,6 @@ void handle_packet(int p) {
                         to_erase.push_back(v);
                         g_commander.add_to_command(v);
                         s.visible[v.point_guid] = false;
-                        g_renderstate.damaged = true;
                     }
                 }
                 for (auto e : to_erase) {
@@ -485,7 +491,8 @@ void handle_packet(int p) {
 }
 
 // return true if we should quit.
-bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &event) {
+bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context,
+                  SDL_Event &event) {
     if (event.type == SDL_QUIT) {
         return true;
     }
@@ -494,7 +501,7 @@ bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &ev
         event.window.event == SDL_WINDOWEVENT_RESIZED) {
         SCREEN_WIDTH = event.window.data1;
         SCREEN_HEIGHT = event.window.data2;
-	vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
+        vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
     } else if (event.type == SDL_SYSWMEVENT) {
         EasyTabResult res =
             EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
@@ -516,25 +523,21 @@ bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &ev
                 return false;
             }
             // undo
-            g_renderstate.damaged = true;
             g_commander.undo();
         } else if (event.key.keysym.sym == SDLK_w) {
             // redo
             if (g_curvestate.is_down) {
                 return false;
             }
-            g_renderstate.damaged = true;
             g_commander.redo();
         } else if (event.key.keysym.sym == SDLK_e) {
             // toggle eraser
-            g_renderstate.damaged = true;
             g_colorstate.is_eraser = !g_colorstate.is_eraser;
             g_colorstate.eraser_radius =
                 g_colorstate.is_eraser ? MIN_ERASER_RADIUS : -1;
         } else if (event.key.keysym.sym == SDLK_r) {
             g_colorstate.colorix =
                 (g_colorstate.colorix + 1) % g_palette.size();
-            g_renderstate.damaged = true;
         }
     } else if (event.type == SDL_MOUSEBUTTONDOWN) {
         string button_name = "unk";
@@ -546,17 +549,24 @@ bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &ev
                 button_name = "right";
                 if (!g_overviewstate.overviewing) {
                     g_overviewstate.overviewing = true;
-                    g_renderstate.damaged = true;
-                    g_renderstate.zoom = 1.0 / OVERVIEW_ZOOMOUT_FACTOR;
-                    g_overviewstate.pan = g_renderstate.pan;
-                    g_renderstate.pan.x = g_renderstate.pan.y = 0;
+                    float zoomout = 2.0;
+                    zoomout = std::max<float>(2.0 + 
+                        (g_overviewstate.maxPos.x - g_overviewstate.minPos.x) /
+                            SCREEN_WIDTH,
+                        zoomout);
+                    zoomout = std::max<float>(
+                        2.0 + (g_overviewstate.maxPos.y - g_overviewstate.minPos.y) /
+                            SCREEN_HEIGHT,
+                        zoomout);
+                    g_renderstate.zoom = 1.0 / zoomout;
+                    g_overviewstate.saved_pan = g_renderstate.pan;
+                    g_renderstate.pan = g_overviewstate.minPos - V2<int>(SCREEN_WIDTH /2.0, SCREEN_HEIGHT/2.0);
                     break;
                 }
                 if (g_overviewstate.overviewing) {
                     g_overviewstate.overviewing = false;
-                    g_renderstate.damaged = true;
+                    g_renderstate.pan = g_overviewstate.saved_pan;
                     g_renderstate.zoom = 1.0;
-                    g_renderstate.pan = g_overviewstate.pan;
                     break;
                 }
                 break;
@@ -565,7 +575,6 @@ bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &ev
                 button_name = "middle";
                 if (!g_overviewstate.overviewing) {
                     g_panstate.panning = true;
-                    g_renderstate.damaged = true;
                     g_panstate.startpan = g_renderstate.pan;
                     g_panstate.startpenpos = g_penstate;
                     break;
@@ -581,7 +590,6 @@ bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &ev
     else if (event.type == SDL_WINDOWEVENT &&
              event.window.event == SDL_WINDOWEVENT_ENTER) {
         // need to repaint when window gains focus
-        g_renderstate.damaged = true;
         return false;
     }
 
@@ -596,7 +604,6 @@ bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, SDL_Event &ev
             case SDL_BUTTON_MIDDLE:
                 button_name = "middle";
                 if (!g_overviewstate.overviewing) {
-                    g_renderstate.damaged = true;
                     g_panstate.panning = false;
                     break;
                 }
@@ -633,11 +640,6 @@ int main() {
         return -1;
     }
 
-
-    // start pan at center.
-    g_renderstate.pan = V2<int>(SCREEN_WIDTH * OVERVIEW_ZOOMOUT_FACTOR / 2,
-                                SCREEN_HEIGHT * OVERVIEW_ZOOMOUT_FACTOR / 2);
-
     // https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
     // https://github.com/serge-rgb/milton/search?q=SDL_SysWMEvent
     // need to capture pen events.
@@ -651,9 +653,9 @@ int main() {
     SDL_GL_SetSwapInterval(1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    if(glewInit() != GLEW_OK) {
-		printf("Could not init glew.\n");
-		return -1;
+    if (glewInit() != GLEW_OK) {
+        printf("Could not init glew.\n");
+        return -1;
     }
 
     vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -672,31 +674,22 @@ int main() {
         // Get the next event
         SDL_Event event;
         while (!g_quit && SDL_PollEvent(&event)) {
-	  g_quit = handle_event(sysinfo, gl_context, event);
+            g_quit = handle_event(sysinfo, gl_context, event);
         }
 
-        // eraser always damages because we need to redraw eraser Stroke.
-        g_renderstate.damaged |= g_colorstate.is_eraser;
-        // for logging into the console.
-        const bool logging_was_damaged = g_renderstate.damaged;
-
-        if (true || g_renderstate.damaged) {
-            g_renderstate.damaged = false;
-
-	    vg_begin_frame();
-            // SDL_GL_MakeCurrent(window, gl_context);
-            // cairo_set_operator(g_cr, cairo_operator_t::CAIRO_OPERATOR_SOURCE);
-        vg_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Color::RGB(240, 240, 240));
+        vg_begin_frame();
+        vg_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
+                     Color::RGB(240, 240, 240));
+        if (!g_overviewstate.overviewing) {
             draw_grid_cr();
-            draw_pen_strokes_cr();
-            draw_eraser_cr();
-            if (!g_panstate.panning && !g_overviewstate.overviewing) {
-	      draw_palette();
-            }
-	    vg_end_frame();
-            SDL_GL_SwapWindow(window);
-            // cairo_destroy(g_cr);
         }
+        draw_pen_strokes_cr();
+        draw_eraser_cr();
+        if (!g_panstate.panning && !g_overviewstate.overviewing) {
+            draw_palette();
+        }
+        vg_end_frame();
+        SDL_GL_SwapWindow(window);
 
         const Uint64 end_count = SDL_GetPerformanceCounter();
         const int counts_per_second = SDL_GetPerformanceFrequency();
@@ -704,13 +697,13 @@ int main() {
             (end_count - start_count) / (double)counts_per_second;
         const double elapsedMS = elapsedSec * 1000.0;
         int FPS = 1.0 / elapsedSec;
-        const int TARGET_FPS = 60;
+        const int TARGET_FPS = 30;
         const double timeToNextFrameMs = 1000.0 / TARGET_FPS;
-            printf(
-                "%20s | elapsed time: %4.2f | sleeping for: %4.2f | time to "
-                "next frame: %4.2f\n",
-                (logging_was_damaged ? "DAMAGED" : ""), elapsedMS,
-                timeToNextFrameMs - elapsedMS, timeToNextFrameMs);
+        printf(
+            "elapsed time: %4.2f | sleeping for: %4.2f | time to "
+            "next frame: %4.2f\n",
+             elapsedMS,
+            timeToNextFrameMs - elapsedMS, timeToNextFrameMs);
 
         if (timeToNextFrameMs > elapsedMS) {
             // SDL_Delay(floor(1000.0/TARGET_FPS - elapsedMS));
