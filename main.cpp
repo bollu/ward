@@ -501,7 +501,7 @@ bool handle_event(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context,
         event.window.event == SDL_WINDOWEVENT_RESIZED) {
         SCREEN_WIDTH = event.window.data1;
         SCREEN_HEIGHT = event.window.data2;
-        vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
+        // vg_init(gl_context);
     } else if (event.type == SDL_SYSWMEVENT) {
         EasyTabResult res =
             EasyTab_HandleEvent(&event.syswm.msg->msg.x11.event);
@@ -647,11 +647,6 @@ int main() {
     // https://github.com/serge-rgb/milton/search?q=SDL_SysWMEvent
     // need to capture pen events.
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
-
-    SDL_SysWMinfo sysinfo;
-    SDL_VERSION(&sysinfo.version);
-    int ok = SDL_GetWindowWMInfo(window, &sysinfo);
-    assert(ok == SDL_TRUE && "unable to get SDL X11 information");
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_SetSwapInterval(1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -661,8 +656,12 @@ int main() {
         return -1;
     }
 
-    vg_init(sysinfo, gl_context, SCREEN_WIDTH, SCREEN_HEIGHT);
+    vg_init(gl_context);
 
+    SDL_SysWMinfo sysinfo;
+    SDL_VERSION(&sysinfo.version);
+    int ok = SDL_GetWindowWMInfo(window, &sysinfo);
+    assert(ok == SDL_TRUE && "unable to get SDL X11 information");
     ok = EasyTab_Load(sysinfo.info.x11.display, sysinfo.info.x11.window);
     if (ok != EASYTAB_OK) {
         cerr << "easytab error code: |" << ok << "|\n";
@@ -680,7 +679,8 @@ int main() {
             g_quit = handle_event(sysinfo, gl_context, event);
         }
 
-        vg_begin_frame();
+        glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        vg_begin_frame(SCREEN_WIDTH, SCREEN_HEIGHT);
         vg_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
                      Color::RGB(240, 240, 240));
         if (!g_overviewstate.overviewing) {

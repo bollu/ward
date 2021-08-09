@@ -68,8 +68,7 @@ V2<T> operator/(V2<T> a, float f) {
     return a.scale(1.0 / f);
 }
 
-void vg_init(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, int width,
-             int height);
+void vg_init(SDL_GLContext gl_context);
 void vg_draw_line(int x1, int y1, int x2, int y2, int radius, Color c);
 // draw at vs[i] - offset
 void vg_draw_lines(const std::vector<V2<int>> &vs,
@@ -77,5 +76,5 @@ void vg_draw_lines(const std::vector<V2<int>> &vs,
                    V2<int> offset, float zoom);
 void vg_draw_rect(int x1, int y1, int x2, int y2, Color c);
 void vg_draw_circle(int x, int y, int r, Color c);
-void vg_begin_frame();
+void vg_begin_frame(int width, int height);
 void vg_end_frame();

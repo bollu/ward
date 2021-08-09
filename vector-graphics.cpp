@@ -16,20 +16,12 @@
 #include "nanovg/nanovg_gl.h"
 
 NVGcontext *g_vg = NULL;
-float g_width, g_height, g_px_ratio;
 
-void vg_init(SDL_SysWMinfo sysinfo, SDL_GLContext gl_context, int width,
-             int height) {
+void vg_init(SDL_GLContext gl_context) {
+    if (g_vg) { nvgDeleteGL2(g_vg); }
     g_vg = nvgCreateGL2(NVG_ANTIALIAS | NVG_STENCIL_STROKES | NVG_DEBUG);
-    g_width = width;
-    g_height = height;
-    g_px_ratio = g_width / g_height;
     nvgLineCap(g_vg, NVG_ROUND);
     nvgLineJoin(g_vg, NVG_ROUND);
-    // nvgLineCap(g_vg, NVG_BUTT);
-    // nvgLineJoin(g_vg, NVG_BEVEL);
-    // nvgLineJoin(g_vg, NVG_MITER);
-    // nvgMiterLimit(g_vg, 5.0);
 }
 
 void vg_draw_line(int x1, int y1, int x2, int y2, int radius, Color c) {
@@ -87,5 +79,5 @@ void vg_draw_lines(const std::vector<V2<int>> &vs,
     }
 }
 
-void vg_begin_frame() { nvgBeginFrame(g_vg, g_width, g_height, g_px_ratio); };
+void vg_begin_frame(int w, int h) { nvgBeginFrame(g_vg, w, h, (float)w/h); };
 void vg_end_frame() { nvgEndFrame(g_vg); };
