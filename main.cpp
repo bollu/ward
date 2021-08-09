@@ -628,6 +628,7 @@ int main() {
     SCREEN_WIDTH = DM.w;
     SCREEN_HEIGHT = DM.h;
 
+
     assert(SCREEN_WIDTH >= 0 && "unable to detect screen width");
     assert(SCREEN_HEIGHT >= 0 && "unable to detect screen height");
 
@@ -639,6 +640,8 @@ int main() {
         SDL_Log("Could not create a window: %s", SDL_GetError());
         return -1;
     }
+
+    SDL_GetWindowSize(window, &SCREEN_WIDTH, &SCREEN_HEIGHT);
 
     // https://github.com/serge-rgb/milton/blob/5056a615e41e914bc22bcc7d2b5dc763e58c7b85/src/sdl_milton.cc#L239
     // https://github.com/serge-rgb/milton/search?q=SDL_SysWMEvent

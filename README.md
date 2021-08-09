@@ -35,7 +35,8 @@ No-nonsense infinite whiteboard, in the [suckless tradition](https://suckless.or
 - `E`: toggle `E` raser
 - `R`: `R` otate to next color.
 - lower wacom button + drag: pan.
-- upper wacom button: toggle overview. Tap to move to a location in the overview. Tap upper button again to quit overview.
+- upper wacom button: toggle overview. Tap to move to a location in the overview. 
+  Tap upper button in overview mode to quit overview without moving.
 - Color selection: hover pointer over color in color pot in color palette at bottom row.
 - Eraser selection: hover pointer over eraser in color palette at bottom left.
 
